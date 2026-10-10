@@ -1,0 +1,3 @@
+# build output (run build.bat)
+*.exe
+*.pdb
