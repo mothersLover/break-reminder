@@ -13,7 +13,8 @@ namespace BreakReminder
 
         readonly AppSettings original;
         readonly NumericUpDown numInterval, numBreak, numSnooze, numRepeat, numLongEvery, numLongMin;
-        readonly CheckBox chkIdle, chkBlink, chkSound, chkRepeat, chkTray, chkAutostart, chkLong, chkDndCalls, chkDndFull, chkHotkey;
+        readonly CheckBox chkIdle, chkBlink, chkSound, chkRepeat, chkTray, chkAutostart, chkLong, chkDndCalls, chkDndFull, chkHotkey, chkAutoDay;
+        readonly DateTimePicker dtStart, dtEnd;
         readonly ComboBox cmbPopup, cmbSound;
         readonly TrackBar trkVolume;
         readonly Button btnPlay, btnBrowse;
@@ -45,8 +46,10 @@ namespace BreakReminder
 
             var tabs = new TabControl { Location = new Point(Ui.S(8), Ui.S(8)), Width = ClientSize.Width - Ui.S(16), Padding = new Point(Ui.S(14), Ui.S(5)) };
             var pageMain = new TabPage("Основные") { UseVisualStyleBackColor = true };
+            var pageDay = new TabPage("Рабочий день и запуск") { UseVisualStyleBackColor = true };
             var pageTexts = new TabPage("Тексты уведомлений") { UseVisualStyleBackColor = true };
             tabs.TabPages.Add(pageMain);
+            tabs.TabPages.Add(pageDay);
             tabs.TabPages.Add(pageTexts);
             Controls.Add(tabs);
 
@@ -107,11 +110,41 @@ namespace BreakReminder
             host.Controls.Add(new Label { Text = "сек, пока не отвечу", AutoSize = true, Location = new Point(C + Ui.S(78), y + Ui.S(4)) });
             y += Ui.S(34);
 
-            Header("Общие");
-            chkTray = Check("Крестик сворачивает в трей, пока идёт рабочий день", s.CloseToTray, 1);
-            chkAutostart = Check("Запускать вместе с Windows", Autostart.Get(), 1);
-            chkHotkey = Check("Пауза / продолжить по Ctrl+Alt+P (из любой программы)", s.PauseHotkey, 1);
             mainBottom = Math.Max(mainBottom, y);
+
+            // =============== Вкладка «Рабочий день и запуск» ===============
+            host = pageDay;
+            colX = 0;
+            y = Ui.S(4);
+            Header("Автоматический рабочий день");
+            chkAutoDay = Check("Автоматически начинать и заканчивать рабочий день", s.AutoDay, 1);
+            dtStart = TimeRow("Начало", s.AutoStartMin);
+            dtEnd = TimeRow("Конец", s.AutoEndMin);
+            host.Controls.Add(new Label
+            {
+                Text = "С времени начала программа ждёт разблокировки экрана и сама\n" +
+                       "нажимает «Начать» (если ты уже не начал день вручную).\n" +
+                       "Во время конца — сама нажимает «Закончить».\n" +
+                       "Автостарт срабатывает один раз в день: если закончил день\n" +
+                       "раньше вручную, заново он сам не начнётся.\n\n" +
+                       "Программа должна быть запущена — поэтому вместе с этой\n" +
+                       "галочкой включается «Запускать вместе с Windows».",
+                ForeColor = SystemColors.GrayText,
+                AutoSize = true,
+                Location = new Point(L, y + Ui.S(4))
+            });
+            y += Ui.S(150);
+            int dayBottom = y;
+
+            colX = ColW;
+            y = Ui.S(4);
+            Header("Запуск и окно");
+            chkAutostart = Check("Запускать вместе с Windows", Autostart.Get(), 1);
+            chkTray = Check("Крестик сворачивает в трей, пока идёт рабочий день", s.CloseToTray, 1);
+            chkHotkey = Check("Пауза / продолжить по Ctrl+Alt+P (из любой программы)", s.PauseHotkey, 1);
+            dayBottom = Math.Max(dayBottom, y);
+
+            chkAutoDay.CheckedChanged += delegate { if (chkAutoDay.Checked) chkAutostart.Checked = true; UpdateEnabled(); };
 
             // =============== Вкладка «Тексты уведомлений» ===============
             host = pageTexts;
@@ -160,7 +193,7 @@ namespace BreakReminder
             });
 
             // =============== низ окна ===============
-            int pageH = Math.Max(mainBottom, textsBottom) + Ui.S(10);
+            int pageH = Math.Max(Math.Max(mainBottom, textsBottom), dayBottom) + Ui.S(10);
             tabs.Height = pageH + Ui.S(36); // + заголовки вкладок и рамка
             y = tabs.Bottom + Ui.S(10);
 
@@ -242,6 +275,27 @@ namespace BreakReminder
             return c;
         }
 
+        DateTimePicker TimeRow(string label, int minutes)
+        {
+            AddLabel(label, y + Ui.S(4));
+            var t = new DateTimePicker
+            {
+                Format = DateTimePickerFormat.Custom,
+                CustomFormat = "HH:mm",
+                ShowUpDown = true,
+                Value = DateTime.Today.AddMinutes(minutes),
+                Bounds = new Rectangle(C, y, Ui.S(90), Ui.S(26))
+            };
+            host.Controls.Add(t);
+            y += Ui.S(34);
+            return t;
+        }
+
+        static int ToMinutes(DateTimePicker t)
+        {
+            return t.Value.Hour * 60 + t.Value.Minute;
+        }
+
         TextBox TextRow(string label, string value)
         {
             AddLabel(label, y + Ui.S(4));
@@ -304,6 +358,7 @@ namespace BreakReminder
             trkVolume.Enabled = snd && cmbSound.SelectedIndex < 3; // первые три — встроенные мелодии
             numRepeat.Enabled = snd && chkRepeat.Checked;
             numLongEvery.Enabled = numLongMin.Enabled = chkLong.Checked;
+            dtStart.Enabled = dtEnd.Enabled = chkAutoDay.Checked;
             lblCustom.Text = string.IsNullOrEmpty(customPath) ? "файл не выбран" : Path.GetFileName(customPath);
         }
 
@@ -320,6 +375,9 @@ namespace BreakReminder
             s.DndCalls = chkDndCalls.Checked;
             s.DndFullscreen = chkDndFull.Checked;
             s.PauseHotkey = chkHotkey.Checked;
+            s.AutoDay = chkAutoDay.Checked;
+            s.AutoStartMin = ToMinutes(dtStart);
+            s.AutoEndMin = ToMinutes(dtEnd);
             s.Popup = (PopupMode)cmbPopup.SelectedIndex;
             s.Blink = chkBlink.Checked;
             s.SoundOn = chkSound.Checked;

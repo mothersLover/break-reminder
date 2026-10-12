@@ -24,6 +24,10 @@ namespace BreakReminder
         public bool DndFullscreen = true;
         public bool PauseHotkey = true;
 
+        public bool AutoDay = false;
+        public int AutoStartMin = 10 * 60;  // 10:00
+        public int AutoEndMin = 22 * 60;    // 22:00
+
         public PopupMode Popup = PopupMode.Corner;
         public bool Blink = true;
 
@@ -90,6 +94,9 @@ namespace BreakReminder
                 s.DndCalls = Bool(d, "DndCalls", s.DndCalls);
                 s.DndFullscreen = Bool(d, "DndFullscreen", s.DndFullscreen);
                 s.PauseHotkey = Bool(d, "PauseHotkey", s.PauseHotkey);
+                s.AutoDay = Bool(d, "AutoDay", s.AutoDay);
+                s.AutoStartMin = Int(d, "AutoStartMin", s.AutoStartMin, 0, 24 * 60 - 1);
+                s.AutoEndMin = Int(d, "AutoEndMin", s.AutoEndMin, 0, 24 * 60 - 1);
                 s.Blink = Bool(d, "Blink", s.Blink);
                 s.SoundOn = Bool(d, "SoundOn", s.SoundOn);
                 s.Volume = Int(d, "Volume", s.Volume, 0, 100);
@@ -140,6 +147,9 @@ namespace BreakReminder
                 sb.AppendLine("DndCalls=" + (DndCalls ? 1 : 0));
                 sb.AppendLine("DndFullscreen=" + (DndFullscreen ? 1 : 0));
                 sb.AppendLine("PauseHotkey=" + (PauseHotkey ? 1 : 0));
+                sb.AppendLine("AutoDay=" + (AutoDay ? 1 : 0));
+                sb.AppendLine("AutoStartMin=" + AutoStartMin);
+                sb.AppendLine("AutoEndMin=" + AutoEndMin);
                 sb.AppendLine("Popup=" + Popup);
                 sb.AppendLine("Blink=" + (Blink ? 1 : 0));
                 sb.AppendLine("SoundOn=" + (SoundOn ? 1 : 0));
@@ -254,7 +264,7 @@ namespace BreakReminder
                 using (var k = Registry.CurrentUser.OpenSubKey(RunKey, true))
                 {
                     if (k == null) return;
-                    if (on) k.SetValue(Name, "\"" + Application.ExecutablePath + "\"");
+                    if (on) k.SetValue(Name, "\"" + Application.ExecutablePath + "\" --tray");
                     else k.DeleteValue(Name, false);
                 }
             }

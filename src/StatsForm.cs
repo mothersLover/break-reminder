@@ -42,6 +42,26 @@ namespace BreakReminder
             catch { }
         }
 
+        /// <summary>Когда начался последний записанный рабочий день (или DateTime.MinValue).</summary>
+        public static DateTime LastStart()
+        {
+            DateTime last = DateTime.MinValue;
+            try
+            {
+                if (!File.Exists(FilePath)) return last;
+                foreach (string line in File.ReadAllLines(FilePath, Encoding.UTF8))
+                {
+                    string[] p = line.Split(';');
+                    DateTime dt;
+                    if (p.Length >= 2 && DateTime.TryParseExact(p[0] + " " + p[1], "yyyy-MM-dd HH:mm",
+                            CultureInfo.InvariantCulture, DateTimeStyles.None, out dt) && dt > last)
+                        last = dt;
+                }
+            }
+            catch { }
+            return last;
+        }
+
         /// <summary>Все записи, сложенные по дням (за день может быть несколько сессий).</summary>
         public static Dictionary<DateTime, DayStat> Load()
         {

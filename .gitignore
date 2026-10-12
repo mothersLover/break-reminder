@@ -1,3 +1,6 @@
 # build output (run build.bat)
 *.exe
 *.pdb
+
+# Visual Studio local state
+.vs/

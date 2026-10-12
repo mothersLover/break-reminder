@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace BreakReminder
 {
@@ -17,6 +18,8 @@ namespace BreakReminder
         TimeSpan remaining;       // до следующего напоминания
         TimeSpan sinceLastBreak;  // сколько работаешь без настоящего перерыва
         DateTime lastTick, dayStart, pauseStart;
+        DateTime lastDayStart;    // когда последний раз начинался рабочий день (для «один автостарт в день»)
+        bool screenLocked;
         bool away, exiting, trayHintShown, blinkPhase;
         TimeSpan awayIdle;        // сколько длилось текущее отсутствие
         int done, skipped, snoozed;
@@ -39,8 +42,13 @@ namespace BreakReminder
         readonly ToolStripMenuItem miPause, miMain;
         readonly Icon icoIdle, icoRun, icoPause, icoAlert;
 
-        public MainForm()
+        bool startHidden;
+
+        public MainForm() : this(false) { }
+
+        public MainForm(bool startHidden)
         {
+            this.startHidden = startHidden;
             settings = AppSettings.Load();
 
             icoIdle = Ui.MakeIcon(Ui.Gray);
@@ -111,6 +119,8 @@ namespace BreakReminder
             timer = new Timer { Interval = 500 };
             timer.Tick += OnTick;
             lastTick = DateTime.Now;
+            lastDayStart = History.LastStart();
+            SystemEvents.SessionSwitch += OnSessionSwitch;
             timer.Start();
 
             UpdateUi();
@@ -221,9 +231,16 @@ namespace BreakReminder
         void OnTick(object sender, EventArgs e)
         {
             DateTime now = DateTime.Now;
+            DateTime prevTick = lastTick;
             TimeSpan delta = now - lastTick;
             lastTick = now;
             if (delta < TimeSpan.Zero) delta = TimeSpan.Zero; // перевели часы назад
+
+            if (CheckAutoDay(now, prevTick))
+            {
+                UpdateUi();
+                return;
+            }
 
             if (state == WorkState.Running)
             {
@@ -325,9 +342,84 @@ namespace BreakReminder
             done = skipped = snoozed = cycle = 0;
             away = false;
             dndReason = null;
-            dayStart = lastTick = DateTime.Now;
-            statusText = "Рабочий день начат. Первый перерыв в " + NextAt();
+            dayStart = lastTick = lastDayStart = DateTime.Now;
+            statusText = "Рабочий день начат. Первый перерыв в " + NextAt()
+                + (settings.AutoDay ? "\nАвтозавершение в " + AutoEndFor(dayStart).ToString("HH:mm") : "");
             UpdateUi();
+        }
+
+        // ---------- автоматический рабочий день ----------
+
+        TimeSpan AutoStartTime { get { return TimeSpan.FromMinutes(settings.AutoStartMin); } }
+        TimeSpan AutoEndTime { get { return TimeSpan.FromMinutes(settings.AutoEndMin); } }
+
+        /// <summary>Если сейчас идёт рабочее «окно» (между началом и концом), возвращает момент его начала.</summary>
+        DateTime? CurrentAutoWindowStart(DateTime now)
+        {
+            TimeSpan s = AutoStartTime, e = AutoEndTime, t = now.TimeOfDay;
+            if (s == e) return null;
+            if (s < e) return t >= s && t < e ? now.Date + s : (DateTime?)null;
+            // окно через полночь (например, 22:00 → 06:00)
+            if (t >= s) return now.Date + s;
+            if (t < e) return now.Date.AddDays(-1) + s;
+            return null;
+        }
+
+        /// <summary>Ближайшее время конца после начала дня.</summary>
+        DateTime AutoEndFor(DateTime start)
+        {
+            DateTime end = start.Date + AutoEndTime;
+            return end <= start ? end.AddDays(1) : end;
+        }
+
+        DateTime NextAutoStart(DateTime now)
+        {
+            DateTime d = now.Date + AutoStartTime;
+            return d <= now ? d.AddDays(1) : d;
+        }
+
+        /// <summary>Автоначало/автоконец дня. true — состояние поменялось, тик дальше не обрабатываем.</summary>
+        bool CheckAutoDay(DateTime now, DateTime prevTick)
+        {
+            if (!settings.AutoDay) return false;
+
+            if (state == WorkState.Idle)
+            {
+                // Один раз за «окно»: если в этом окне день уже начинали (вручную или сами) — не трогаем.
+                DateTime? ws = CurrentAutoWindowStart(now);
+                if (ws == null || lastDayStart >= ws.Value || screenLocked) return false;
+                StartDay();
+                statusText = "Рабочий день начат автоматически.\nАвтозавершение в " + AutoEndFor(dayStart).ToString("HH:mm");
+                tray.ShowBalloonTip(4000, "Отдыхалка", "Рабочий день начат автоматически в " + now.ToString("HH:mm"), ToolTipIcon.Info);
+                return true;
+            }
+
+            DateTime endAt = AutoEndFor(dayStart);
+            if (now < endAt) return false;
+            // Если компьютер спал и проснулся после конца — работу считаем только до времени конца.
+            if (state == WorkState.Running && endAt > prevTick) worked += endAt - prevTick;
+            EndDay();
+            statusText = string.Format("День завершён автоматически в {0:HH:mm}: {1} работы\nперерывов {2}, пропущено {3}",
+                endAt, Ui.Minutes(worked), done, skipped);
+            tray.ShowBalloonTip(4000, "Отдыхалка", "Рабочий день завершён: " + Ui.Minutes(worked) + " работы", ToolTipIcon.Info);
+            return true;
+        }
+
+        void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+        {
+            switch (e.Reason)
+            {
+                case SessionSwitchReason.SessionLock:
+                case SessionSwitchReason.ConsoleDisconnect:
+                case SessionSwitchReason.RemoteDisconnect:
+                    screenLocked = true;
+                    break;
+                case SessionSwitchReason.SessionUnlock:
+                case SessionSwitchReason.ConsoleConnect:
+                case SessionSwitchReason.RemoteConnect:
+                    screenLocked = false; // автостарт подхватит ближайший тик
+                    break;
+            }
         }
 
         void EndDay()
@@ -455,7 +547,7 @@ namespace BreakReminder
             Ui.SetText(lblPause, paused ? "Продолжить" : "Пауза");
 
             string next;
-            if (idle) next = "";
+            if (idle) next = AutoStartHint();
             else if (paused) next = "На паузе · до перерыва " + Ui.Ms(remaining);
             else if (reminder != null) next = reminderIsLong ? "Большой перерыв!" : "Пора отдохнуть!";
             else if (dndReason != null) next = "Перерыв ждёт: " + dndReason;
@@ -470,7 +562,8 @@ namespace BreakReminder
             // трей
             Icon ico = idle ? icoIdle : paused ? icoPause : reminder != null ? icoAlert : icoRun;
             if (tray.Icon != ico) tray.Icon = ico;
-            string tt = idle ? "Отдыхалка — день не начат"
+            string hint = AutoStartHint();
+            string tt = idle ? "Отдыхалка — " + (hint.Length > 0 ? hint.ToLower() : "день не начат")
                 : paused ? "Пауза · работа " + Ui.Hms(worked)
                 : "Работа " + Ui.Hms(worked) + " · перерыв через " + Ui.Ms(remaining);
             if (tt.Length > 63) tt = tt.Substring(0, 63);
@@ -479,6 +572,29 @@ namespace BreakReminder
             miPause.Enabled = !idle;
             miPause.Text = paused ? "Продолжить" : "Пауза";
             miMain.Text = idle ? "Начать день" : "Закончить день";
+        }
+
+        string AutoStartHint()
+        {
+            if (!settings.AutoDay || state != WorkState.Idle) return "";
+            DateTime now = DateTime.Now;
+            DateTime? ws = CurrentAutoWindowStart(now);
+            if (ws != null && lastDayStart < ws.Value) return "Начну после разблокировки экрана";
+            DateTime next = NextAutoStart(now);
+            return (next.Date == now.Date ? "Автостарт сегодня в " : "Автостарт завтра в ") + next.ToString("HH:mm");
+        }
+
+        // Запуск вместе с Windows (--tray): сразу прячемся в трей, окно не показываем.
+        protected override void SetVisibleCore(bool value)
+        {
+            if (startHidden)
+            {
+                startHidden = false;
+                if (!IsHandleCreated) CreateHandle();
+                base.SetVisibleCore(false);
+                return;
+            }
+            base.SetVisibleCore(value);
         }
 
         void ShowMain()
@@ -503,16 +619,21 @@ namespace BreakReminder
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            if (!exiting && e.CloseReason == CloseReason.UserClosing && state != WorkState.Idle)
+            // В авторежиме программа нужна и без начатого дня — иначе некому будет начать его вовремя.
+            bool keepInTray = state != WorkState.Idle || settings.AutoDay;
+            if (!exiting && e.CloseReason == CloseReason.UserClosing && keepInTray)
             {
-                if (settings.CloseToTray)
+                if (settings.CloseToTray || settings.AutoDay)
                 {
                     e.Cancel = true;
                     Hide();
                     if (!trayHintShown)
                     {
                         tray.ShowBalloonTip(4000, "Отдыхалка работает в трее",
-                            "Рабочий день продолжается. Кликни по значку, чтобы открыть окно.", ToolTipIcon.Info);
+                            state != WorkState.Idle
+                                ? "Рабочий день продолжается. Кликни по значку, чтобы открыть окно."
+                                : "Жду времени автоматического начала дня. Выйти — через меню значка.",
+                            ToolTipIcon.Info);
                         trayHintShown = true;
                     }
                     return;
@@ -525,6 +646,7 @@ namespace BreakReminder
                 }
             }
             if (state != WorkState.Idle) EndDay();
+            SystemEvents.SessionSwitch -= OnSessionSwitch;
             timer.Stop();
             tray.Visible = false;
             tray.Dispose();

@@ -7,7 +7,7 @@ namespace BreakReminder
     static class Program
     {
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
             bool created;
             using (var mutex = new Mutex(true, "BreakReminder_SingleInstance_7f3a", out created))
@@ -21,7 +21,8 @@ namespace BreakReminder
                 Native.SetProcessDPIAware();
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
-                Application.Run(new MainForm());
+                bool tray = Array.IndexOf(args, "--tray") >= 0; // так нас запускает автозапуск Windows
+                Application.Run(new MainForm(tray));
             }
         }
     }
