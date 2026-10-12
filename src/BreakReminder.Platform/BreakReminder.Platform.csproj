@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Системные функции под каждую ОС. Одна сборка на все платформы: нужная реализация
+    выбирается в рантайме (PlatformFactory), остальной код просто не вызывается.
+  -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BreakReminder.Core\BreakReminder.Core.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BreakReminder.App.ReminderWindow"
+        Title="Время отдохнуть!"
+        SystemDecorations="None" Topmost="True" CanResize="False" ShowInTaskbar="True"
+        SizeToContent="WidthAndHeight" WindowStartupLocation="Manual"
+        Background="#1E1F26">
+  <Panel x:Name="Root">
+    <Border x:Name="Frame" Background="#F39C12" Padding="5"
+            HorizontalAlignment="Center" VerticalAlignment="Center">
+      <Border Background="#2A2C38" Width="460" Padding="24,16,24,20">
+        <StackPanel Spacing="4">
+          <TextBlock x:Name="TitleText" FontSize="27" FontWeight="Bold" Foreground="#ECEFF4" />
+          <TextBlock x:Name="TipText" FontSize="16" Foreground="#ECEFF4" TextWrapping="Wrap"
+                     MaxLines="2" TextTrimming="CharacterEllipsis" Height="48" Margin="0,4,0,0" />
+          <TextBlock x:Name="InfoText" FontSize="12.5" Foreground="#8C92A5" Margin="0,4,0,14" />
+          <Grid ColumnDefinitions="*,10,*,10,*" Height="46">
+            <Button Grid.Column="0" x:Name="DoneButton" Classes="flat" Background="#2ECC71" />
+            <Button Grid.Column="2" x:Name="SnoozeButton" Classes="flat" Background="#484C5E" />
+            <Button Grid.Column="4" x:Name="SkipButton" Classes="flat" Background="#484C5E" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </Border>
+  </Panel>
+</Window>

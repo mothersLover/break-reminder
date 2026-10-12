@@ -1,0 +1,5 @@
+* text=auto
+# скрипты для Linux/macOS должны остаться с LF, иначе bash на раннерах споткнётся
+*.sh text eol=lf
+*.ico binary
+*.png binary

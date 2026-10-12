@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Вся логика без UI и без системных вызовов: таймеры, перерывы, расписание, настройки, история. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="BreakReminder.Core.Tests" />
+  </ItemGroup>
+</Project>

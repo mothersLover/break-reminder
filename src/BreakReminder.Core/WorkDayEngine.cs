@@ -1,0 +1,318 @@
+namespace BreakReminder.Core;
+
+public enum WorkState { Idle, Running, Paused }
+public enum ReminderResult { Done, Snooze, Skip }
+
+/// <summary>
+/// Состояние рабочего дня: время работы, отсчёт до перерыва, большие перерывы, «не беспокоить»,
+/// учёт сна/простоя/паузы как отдыха, автоматическое начало и конец дня.
+/// Не знает ни про окна, ни про ОС: время передаётся в каждый вызов, система — через IEnvironmentProbe.
+/// </summary>
+public sealed class WorkDayEngine
+{
+    readonly IEnvironmentProbe probe;
+    readonly IHistoryStore history;
+    AppSettings settings;
+
+    DateTime lastTick, pauseStart, lastDayStart, lastBusyCheck = DateTime.MinValue;
+    bool callActive, fullscreenActive;
+    TimeSpan awayIdle;
+
+    public WorkDayEngine(AppSettings settings, IEnvironmentProbe probe, IHistoryStore history, DateTime now)
+    {
+        this.settings = settings;
+        this.probe = probe;
+        this.history = history;
+        lastTick = now;
+        lastDayStart = history.LastStart();
+        StatusText = "Нажми «Начать», когда садишься за работу";
+    }
+
+    // ---------- состояние (только чтение для UI) ----------
+
+    public WorkState State { get; private set; } = WorkState.Idle;
+    public TimeSpan Worked { get; private set; }          // время работы за день (без пауз)
+    public TimeSpan Remaining { get; private set; }       // до следующего напоминания
+    public TimeSpan SinceLastBreak { get; private set; }  // сколько работаешь без настоящего перерыва
+    public DateTime DayStart { get; private set; }
+    public int Done { get; private set; }
+    public int Skipped { get; private set; }
+    public int Snoozed { get; private set; }
+    public int Cycle { get; private set; }                // сделано обычных перерывов с последнего большого
+    public bool Away { get; private set; }
+    public string? DndReason { get; private set; }        // почему напоминание сейчас ждёт (null — не ждёт)
+    public bool ReminderOpen { get; private set; }
+    public bool ReminderIsLong { get; private set; }
+    public string StatusText { get; private set; }
+
+    public bool NextIsLong => settings.LongBreaks && Cycle >= settings.LongEvery - 1;
+
+    public AppSettings Settings
+    {
+        get => settings;
+        set
+        {
+            settings = value;
+            if (Remaining > value.Interval) Remaining = value.Interval;
+        }
+    }
+
+    public DayStat TodaySoFar() => new() { Minutes = (int)Worked.TotalMinutes, Done = Done, Skipped = Skipped, Snoozed = Snoozed };
+
+    // ---------- события для UI ----------
+
+    /// <summary>Пора показать напоминание (аргумент — большой ли перерыв).</summary>
+    public event Action<bool>? ReminderDue;
+    /// <summary>Напоминание нужно закрыть без ответа (пауза, конец дня).</summary>
+    public event Action? ReminderCancelled;
+    /// <summary>Короткое уведомление для пользователя (автоначало/автоконец дня).</summary>
+    public event Action<string>? Notification;
+
+    // ---------- основной цикл ----------
+
+    public void Tick(DateTime now)
+    {
+        DateTime prevTick = lastTick;
+        TimeSpan delta = now - lastTick;
+        lastTick = now;
+        if (delta < TimeSpan.Zero) delta = TimeSpan.Zero; // перевели часы назад
+
+        if (CheckAutoDay(now, prevTick)) return;
+        if (State != WorkState.Running) return;
+
+        Worked += delta;
+        SinceLastBreak += delta;
+        if (ReminderOpen) return; // ждём ответа — отсчёт стоит
+
+        TimeSpan rest = settings.BreakSpan;
+        TimeSpan idle;
+        if (delta >= rest)
+        {
+            // Между тиками прошло много времени — компьютер спал.
+            ResetAfterRest("Компьютер спал " + Format.Minutes(delta) + " — засчитано как перерыв", delta);
+        }
+        else if (settings.IdleDetect && (idle = probe.IdleTime()) >= rest && !BusyWithoutInput(now))
+        {
+            // Созвон или видео на весь экран без мыши — это не отдых.
+            if (!Away) StatusText = "Ты отошёл — засчитываю это как отдых";
+            Away = true;
+            awayIdle = idle;
+            Remaining = settings.Interval;
+            SinceLastBreak = TimeSpan.Zero;
+            DndReason = null;
+        }
+        else
+        {
+            if (Away)
+            {
+                Away = false;
+                if (awayIdle >= settings.LongBreakSpan) Cycle = 0;
+                StatusText = "С возвращением! Следующий перерыв в " + NextAt(now);
+            }
+            if (Remaining > TimeSpan.Zero) Remaining -= delta;
+            if (Remaining <= TimeSpan.Zero)
+            {
+                string? why = DndReasonNow(now);
+                if (why == null)
+                {
+                    DndReason = null;
+                    ShowReminder();
+                }
+                else if (why != DndReason)
+                {
+                    DndReason = why;
+                    StatusText = "Не беспокою: " + why + ". Напомню, когда закончится";
+                }
+            }
+        }
+    }
+
+    // ---------- действия пользователя ----------
+
+    public void StartDay(DateTime now)
+    {
+        State = WorkState.Running;
+        Worked = SinceLastBreak = TimeSpan.Zero;
+        Remaining = settings.Interval;
+        Done = Skipped = Snoozed = Cycle = 0;
+        Away = false;
+        DndReason = null;
+        DayStart = lastTick = lastDayStart = now;
+        StatusText = "Рабочий день начат. Первый перерыв в " + NextAt(now)
+            + (settings.AutoDay ? "\nАвтозавершение в " + AutoEndFor(DayStart).ToString("HH:mm") : "");
+    }
+
+    public void EndDay(DateTime now)
+    {
+        if (State == WorkState.Idle) return;
+        CloseReminder();
+        State = WorkState.Idle;
+        history.Append(DayStart, now, TodaySoFar());
+        StatusText = $"День окончен: {Format.Minutes(Worked)} работы\nперерывов {Done}, пропущено {Skipped}";
+    }
+
+    public void TogglePause(DateTime now)
+    {
+        if (State == WorkState.Running)
+        {
+            State = WorkState.Paused;
+            pauseStart = now;
+            CloseReminder(); // напоминание вернётся после паузы, если перерыв так и не сделан
+            StatusText = "Пауза — время и напоминания остановлены";
+        }
+        else if (State == WorkState.Paused)
+        {
+            TimeSpan p = now - pauseStart;
+            State = WorkState.Running;
+            lastTick = now;
+            if (p >= settings.BreakSpan)
+                ResetAfterRest("Пауза " + Format.Minutes(p) + " — засчитано как перерыв", p);
+            else
+                StatusText = "Продолжаем";
+        }
+    }
+
+    public void Answer(ReminderResult r, DateTime now)
+    {
+        if (!ReminderOpen) return;
+        ReminderOpen = false;
+        switch (r)
+        {
+            case ReminderResult.Done:
+                Done++;
+                Cycle = ReminderIsLong ? 0 : Cycle + 1;
+                ResetAfterRest("Отлично! Следующий " + (NextIsLong ? "(большой) " : "") + "перерыв в "
+                    + (now + settings.Interval).ToString("HH:mm"));
+                break;
+            case ReminderResult.Skip:
+                Skipped++;
+                Remaining = settings.Interval;
+                StatusText = "Перерыв пропущен. Следующий в " + NextAt(now);
+                break;
+            default:
+                Snoozed++;
+                Remaining = settings.Snooze;
+                StatusText = "Напомню через " + settings.SnoozeMin + " мин";
+                break;
+        }
+    }
+
+    // ---------- внутреннее ----------
+
+    string NextAt(DateTime now) => (now + Remaining).ToString("HH:mm");
+
+    void ShowReminder()
+    {
+        if (ReminderOpen) return;
+        ReminderIsLong = NextIsLong;
+        ReminderOpen = true;
+        ReminderDue?.Invoke(ReminderIsLong);
+    }
+
+    void CloseReminder()
+    {
+        if (!ReminderOpen) return;
+        ReminderOpen = false;
+        ReminderCancelled?.Invoke();
+    }
+
+    void ResetAfterRest(string message)
+    {
+        Remaining = settings.Interval;
+        SinceLastBreak = TimeSpan.Zero;
+        DndReason = null;
+        StatusText = message;
+    }
+
+    /// <summary>Отдых известной длины: если он не короче большого перерыва — цикл начинается заново.</summary>
+    void ResetAfterRest(string message, TimeSpan restLength)
+    {
+        if (restLength >= settings.LongBreakSpan) Cycle = 0;
+        ResetAfterRest(message);
+    }
+
+    void RefreshBusy(DateTime now)
+    {
+        if (now - lastBusyCheck < TimeSpan.FromSeconds(2) && now >= lastBusyCheck) return;
+        lastBusyCheck = now;
+        callActive = probe.IsCallActive();
+        fullscreenActive = probe.IsFullscreenAppActive();
+    }
+
+    bool BusyWithoutInput(DateTime now)
+    {
+        RefreshBusy(now);
+        return callActive || fullscreenActive;
+    }
+
+    string? DndReasonNow(DateTime now)
+    {
+        RefreshBusy(now);
+        if (settings.DndCalls && callActive) return "идёт созвон";
+        if (settings.DndFullscreen && fullscreenActive) return "открыта полноэкранная программа";
+        return null;
+    }
+
+    // ---------- автоматический рабочий день ----------
+
+    /// <summary>Если сейчас рабочее «окно» (между началом и концом), возвращает момент его начала.</summary>
+    internal DateTime? CurrentAutoWindowStart(DateTime now)
+    {
+        TimeSpan s = settings.AutoStartTime, e = settings.AutoEndTime, t = now.TimeOfDay;
+        if (s == e) return null;
+        if (s < e) return t >= s && t < e ? now.Date + s : null;
+        // окно через полночь (например, 22:00 → 06:00)
+        if (t >= s) return now.Date + s;
+        if (t < e) return now.Date.AddDays(-1) + s;
+        return null;
+    }
+
+    /// <summary>Ближайшее время конца после начала дня.</summary>
+    internal DateTime AutoEndFor(DateTime start)
+    {
+        DateTime end = start.Date + settings.AutoEndTime;
+        return end <= start ? end.AddDays(1) : end;
+    }
+
+    internal DateTime NextAutoStart(DateTime now)
+    {
+        DateTime d = now.Date + settings.AutoStartTime;
+        return d <= now ? d.AddDays(1) : d;
+    }
+
+    /// <summary>Автоначало/автоконец дня. true — состояние поменялось, тик дальше не обрабатываем.</summary>
+    bool CheckAutoDay(DateTime now, DateTime prevTick)
+    {
+        if (!settings.AutoDay) return false;
+
+        if (State == WorkState.Idle)
+        {
+            // Один раз за «окно»: если в этом окне день уже начинали (вручную или сами) — не трогаем.
+            DateTime? ws = CurrentAutoWindowStart(now);
+            if (ws == null || lastDayStart >= ws.Value || probe.IsScreenLocked()) return false;
+            StartDay(now);
+            StatusText = "Рабочий день начат автоматически.\nАвтозавершение в " + AutoEndFor(DayStart).ToString("HH:mm");
+            Notification?.Invoke("Рабочий день начат автоматически в " + now.ToString("HH:mm"));
+            return true;
+        }
+
+        DateTime endAt = AutoEndFor(DayStart);
+        if (now < endAt) return false;
+        // Если компьютер спал и проснулся после конца — работу считаем только до времени конца.
+        if (State == WorkState.Running && endAt > prevTick) Worked += endAt - prevTick;
+        EndDay(endAt);
+        StatusText = $"День завершён автоматически в {endAt:HH:mm}: {Format.Minutes(Worked)} работы\nперерывов {Done}, пропущено {Skipped}";
+        Notification?.Invoke("Рабочий день завершён: " + Format.Minutes(Worked) + " работы");
+        return true;
+    }
+
+    /// <summary>Подсказка для главного окна, пока день не начат.</summary>
+    public string AutoStartHint(DateTime now)
+    {
+        if (!settings.AutoDay || State != WorkState.Idle) return "";
+        DateTime? ws = CurrentAutoWindowStart(now);
+        if (ws != null && lastDayStart < ws.Value) return "Начну после разблокировки экрана";
+        DateTime next = NextAutoStart(now);
+        return (next.Date == now.Date ? "Автостарт сегодня в " : "Автостарт завтра в ") + next.ToString("HH:mm");
+    }
+}

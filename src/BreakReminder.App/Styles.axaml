@@ -1,0 +1,90 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Круглая кнопка: полупрозрачный «ореол» + круг с лёгким градиентом. Цвет задаётся через Background. -->
+  <Style Selector="Button.round">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Ellipse Name="Halo" Fill="{TemplateBinding Background}" Opacity="0.16" />
+          <Panel Name="Core">
+            <Ellipse Fill="{TemplateBinding Background}" />
+            <Ellipse>
+              <Ellipse.Fill>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                  <GradientStop Offset="0" Color="#33FFFFFF" />
+                  <GradientStop Offset="1" Color="#14000000" />
+                </LinearGradientBrush>
+              </Ellipse.Fill>
+            </Ellipse>
+            <ContentPresenter Name="Content" Content="{TemplateBinding Content}"
+                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Panel>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.round:pointerover /template/ Ellipse#Halo">
+    <Setter Property="Opacity" Value="0.34" />
+  </Style>
+  <Style Selector="Button.round:pressed /template/ Panel#Core">
+    <Setter Property="RenderTransform" Value="scale(0.97)" />
+  </Style>
+  <Style Selector="Button.round:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+  <Style Selector="Button.round.big /template/ Panel#Core">
+    <Setter Property="Margin" Value="18" />
+  </Style>
+  <Style Selector="Button.round.small /template/ Panel#Core">
+    <Setter Property="Margin" Value="5" />
+  </Style>
+
+  <!-- Плоская цветная кнопка (окно напоминания). -->
+  <Style Selector="Button.flat">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="Foreground" Value="White" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Background="{TemplateBinding Background}" CornerRadius="6" />
+          <Border Name="Hover" Background="White" Opacity="0" CornerRadius="6" />
+          <ContentPresenter Name="Content" Content="{TemplateBinding Content}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.flat:pointerover /template/ Border#Hover">
+    <Setter Property="Opacity" Value="0.1" />
+  </Style>
+  <Style Selector="Button.flat:pressed /template/ Border#Hover">
+    <Setter Property="Background" Value="Black" />
+    <Setter Property="Opacity" Value="0.12" />
+  </Style>
+
+  <!-- Заголовки разделов в настройках. -->
+  <Style Selector="TextBlock.h">
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="#5DADE2" />
+    <Setter Property="Margin" Value="0,12,0,4" />
+  </Style>
+  <Style Selector="TextBlock.hint">
+    <Setter Property="Foreground" Value="#8C92A5" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+    <Setter Property="FontSize" Value="12.5" />
+  </Style>
+  <Style Selector="TextBlock.label">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+</Styles>

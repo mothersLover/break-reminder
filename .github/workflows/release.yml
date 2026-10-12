@@ -1,0 +1,94 @@
+name: Release
+
+# Новый релиз: git tag v2.0.0 && git push origin v2.0.0
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия (например 2.0.1) — для ручного запуска'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: ubuntu-latest,  rid: linux-x64 }
+          - { os: macos-latest,   rid: osx-arm64 }
+          - { os: macos-latest,   rid: osx-x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: dotnet test tests/BreakReminder.Core.Tests -c Release
+
+      - name: Publish
+        shell: bash
+        run: >
+          dotnet publish src/BreakReminder.App -c Release -r ${{ matrix.rid }} --self-contained
+          -p:Version=${{ steps.ver.outputs.version }} -o publish
+
+      - name: Package (Windows)
+        if: startsWith(matrix.rid, 'win')
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path publish\BreakReminder.exe -DestinationPath dist\BreakReminder-${{ matrix.rid }}.zip
+
+      - name: Package (Linux)
+        if: startsWith(matrix.rid, 'linux')
+        run: bash build/package-linux.sh publish ${{ matrix.rid }} dist
+
+      - name: Package (macOS)
+        if: startsWith(matrix.rid, 'osx')
+        run: bash build/package-macos.sh publish ${{ matrix.rid }} ${{ steps.ver.outputs.version }} dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
+          name: Отдыхалка ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            ## Скачать
+            | Система | Файл |
+            |---|---|
+            | Windows 10/11 | `BreakReminder-win-x64.zip` — распаковать и запустить `BreakReminder.exe` |
+            | Linux x64 | `BreakReminder-linux-x64.tar.gz` — распаковать и запустить `./install.sh` |
+            | macOS (Apple M1–M4) | `BreakReminder-osx-arm64.zip` |
+            | macOS (Intel) | `BreakReminder-osx-x64.zip` |
+
+            **macOS:** программа не подписана сертификатом Apple. При первом запуске — правый клик по приложению → «Открыть»,
+            или в терминале: `xattr -dr com.apple.quarantine /Applications/BreakReminder.app`

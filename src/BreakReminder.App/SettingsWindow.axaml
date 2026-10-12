@@ -1,0 +1,154 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BreakReminder.App.SettingsWindow"
+        Title="Настройки"
+        Width="1000" Height="640" MinWidth="760" MinHeight="520"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="#1E1F26">
+  <Window.Styles>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="MinHeight" Value="40" />
+    </Style>
+    <Style Selector="NumericUpDown">
+      <Setter Property="Width" Value="130" />
+      <Setter Property="FormatString" Value="0" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+    </Style>
+    <Style Selector="Grid.row">
+      <Setter Property="Margin" Value="0,3" />
+    </Style>
+    <Style Selector="Grid.row > TextBlock">
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Grid.row > TextBlock.unit">
+      <Setter Property="Margin" Value="10,0,0,0" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel Margin="14">
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,12,0,0">
+      <Button x:Name="TestButton" Content="Проверить уведомление" />
+      <Button Grid.Column="2" x:Name="SaveButton" Content="Сохранить" Classes="accent" IsDefault="True" Margin="0,0,8,0" />
+      <Button Grid.Column="3" x:Name="CancelButton" Content="Отмена" IsCancel="True" />
+    </Grid>
+
+    <TabControl>
+      <!-- ===================== Основные ===================== -->
+      <TabItem Header="Основные">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Напоминания" />
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Напоминать каждые" /><NumericUpDown Grid.Column="1" x:Name="IntervalNum" Minimum="1" Maximum="240" /><TextBlock Grid.Column="2" Classes="unit" Text="мин" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Длительность перерыва" /><NumericUpDown Grid.Column="1" x:Name="BreakNum" Minimum="1" Maximum="60" /><TextBlock Grid.Column="2" Classes="unit" Text="мин" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Кнопка «Отложить» на" /><NumericUpDown Grid.Column="1" x:Name="SnoozeNum" Minimum="1" Maximum="60" /><TextBlock Grid.Column="2" Classes="unit" Text="мин" /></Grid>
+              <CheckBox x:Name="IdleCheck">
+                <TextBlock TextWrapping="Wrap" Text="Если я отходил от компьютера дольше перерыва (сон, блокировка, нет активности) — считать это отдыхом" />
+              </CheckBox>
+
+              <TextBlock Classes="h" Text="Большие перерывы" />
+              <CheckBox x:Name="LongCheck" Content="Включить большие перерывы (как в Помодоро)" />
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Большим будет каждый" /><NumericUpDown Grid.Column="1" x:Name="LongEveryNum" Minimum="2" Maximum="10" /><TextBlock Grid.Column="2" Classes="unit" Text="-й перерыв" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Длительность большого" /><NumericUpDown Grid.Column="1" x:Name="LongMinNum" Minimum="5" Maximum="120" /><TextBlock Grid.Column="2" Classes="unit" Text="мин" /></Grid>
+
+              <TextBlock Classes="h" Text="Не беспокоить" />
+              <CheckBox x:Name="DndCallsCheck" Content="Не показывать, пока идёт созвон (занят микрофон)" />
+              <CheckBox x:Name="DndFullCheck" Content="Не показывать поверх полноэкранных программ" />
+              <TextBlock x:Name="DndFullHint" Classes="hint" Margin="28,0,0,0" IsVisible="False" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Уведомление" />
+              <Grid Classes="row" ColumnDefinitions="165,Auto,Auto"><TextBlock Text="Вид" /><ComboBox Grid.Column="1" Grid.ColumnSpan="2" x:Name="PopupCombo" Width="250" /></Grid>
+              <CheckBox x:Name="BlinkCheck" Content="Мигание рамки (и кнопки на панели задач)" />
+
+              <TextBlock Classes="h" Text="Звук" />
+              <CheckBox x:Name="SoundCheck" Content="Включить звук" />
+              <Grid Classes="row" ColumnDefinitions="165,Auto,Auto">
+                <TextBlock Text="Мелодия" />
+                <ComboBox Grid.Column="1" x:Name="SoundCombo" Width="200" />
+                <Button Grid.Column="2" x:Name="PlayButton" Content="▶" Margin="8,0,0,0" Width="44" HorizontalContentAlignment="Center" />
+              </Grid>
+              <Grid Classes="row" ColumnDefinitions="165,Auto,Auto">
+                <TextBlock />
+                <Button Grid.Column="1" x:Name="BrowseButton" Content="Выбрать файл…" />
+                <TextBlock Grid.Column="2" x:Name="CustomFileText" Classes="hint" Margin="10,0,0,0" MaxWidth="150" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </Grid>
+              <Grid Classes="row" ColumnDefinitions="165,Auto,Auto"><TextBlock Text="Громкость" ToolTip.Tip="Для встроенных мелодий" /><Slider Grid.Column="1" Grid.ColumnSpan="2" x:Name="VolumeSlider" Minimum="0" Maximum="100" Width="250" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="165,Auto,Auto">
+                <CheckBox x:Name="RepeatCheck" Content="Повторять каждые" ToolTip.Tip="Повторять звук, пока не ответишь на уведомление" />
+                <NumericUpDown Grid.Column="1" x:Name="RepeatNum" Minimum="10" Maximum="600" Increment="10" />
+                <TextBlock Grid.Column="2" Classes="unit" Text="сек" />
+              </Grid>
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- ===================== Рабочий день и запуск ===================== -->
+      <TabItem Header="Рабочий день и запуск">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Автоматический рабочий день" />
+              <CheckBox x:Name="AutoDayCheck" Content="Автоматически начинать и заканчивать рабочий день" />
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Начало" /><TimePicker Grid.Column="1" x:Name="StartTimePicker" ClockIdentifier="24HourClock" MinuteIncrement="5" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Конец" /><TimePicker Grid.Column="1" x:Name="EndTimePicker" ClockIdentifier="24HourClock" MinuteIncrement="5" /></Grid>
+              <TextBlock Classes="hint" Margin="0,8,0,0"
+                         Text="С времени начала программа ждёт разблокировки экрана и сама нажимает «Начать» (если ты уже не начал день вручную). Во время конца — сама нажимает «Закончить». Автостарт срабатывает один раз в день: если закончил день раньше вручную, заново он сам не начнётся." />
+              <TextBlock Classes="hint" Margin="0,8,0,0"
+                         Text="Программа должна быть запущена — поэтому вместе с этой галочкой включается «Запускать вместе с системой»." />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Запуск и окно" />
+              <CheckBox x:Name="AutostartCheck" Content="Запускать вместе с системой (сразу в трей)" />
+              <CheckBox x:Name="TrayCheck" Content="Крестик сворачивает в трей, пока идёт рабочий день" />
+              <CheckBox x:Name="HotkeyCheck" Content="Пауза / продолжить горячей клавишей" />
+              <TextBlock x:Name="HotkeyHint" Classes="hint" Margin="28,0,0,0" />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- ===================== Тексты уведомлений ===================== -->
+      <TabItem Header="Тексты уведомлений">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" RowDefinitions="Auto,Auto" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Обычный перерыв" />
+              <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Заголовок" /><TextBox Grid.Column="1" x:Name="TitleShortBox" /></Grid>
+              <TextBlock Classes="hint" Text="Советы — по одному на строку, показывается случайный:" Margin="0,6,0,4" />
+              <TextBox x:Name="TipsShortBox" AcceptsReturn="True" TextWrapping="NoWrap" Height="170" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Большой перерыв" />
+              <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Заголовок" /><TextBox Grid.Column="1" x:Name="TitleLongBox" /></Grid>
+              <TextBlock Classes="hint" Text="Советы — по одному на строку, показывается случайный:" Margin="0,6,0,4" />
+              <TextBox x:Name="TipsLongBox" AcceptsReturn="True" TextWrapping="NoWrap" Height="170" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Grid.Column="0">
+              <TextBlock Classes="h" Text="Кнопки" />
+              <Grid Classes="row" ColumnDefinitions="225,*"><TextBlock Text="«Сделал»" /><TextBox Grid.Column="1" x:Name="BtnDoneBox" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="225,*"><TextBlock Text="«Отложить» ({N} — минуты)" /><TextBox Grid.Column="1" x:Name="BtnSnoozeBox" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="225,*"><TextBlock Text="«Пропустить»" /><TextBox Grid.Column="1" x:Name="BtnSkipBox" /></Grid>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="2" Spacing="8" Margin="0,48,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="PreviewShortButton" Content="Показать обычное" />
+                <Button x:Name="PreviewLongButton" Content="Показать большое" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button x:Name="ResetTextsButton" Content="Стандартные тексты" />
+                <Button x:Name="OpenFolderButton" Content="Папка с файлами советов" />
+              </StackPanel>
+              <TextBlock Classes="hint" Text="Новые тексты применяются сразу после «Сохранить» — к следующему уведомлению, перезапуск не нужен." />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

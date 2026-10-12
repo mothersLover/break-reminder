@@ -1,0 +1,47 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:BreakReminder.App"
+        x:Class="BreakReminder.App.StatsWindow"
+        Title="Статистика"
+        Width="660" Height="500" CanResize="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="#1E1F26">
+  <Window.Styles>
+    <Style Selector="Border.tile">
+      <Setter Property="Background" Value="#2A2C38" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector="Border.tile TextBlock.cap">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="#8C92A5" />
+    </Style>
+    <Style Selector="Border.tile TextBlock.val">
+      <Setter Property="FontSize" Value="18" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#ECEFF4" />
+      <Setter Property="Margin" Value="0,2,0,0" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="16">
+    <Grid ColumnDefinitions="Auto,*,Auto">
+      <Button x:Name="PrevButton" Classes="flat" Background="#484C5E" Width="40" Height="36" Content="‹" FontSize="22" />
+      <TextBlock Grid.Column="1" x:Name="RangeText" FontSize="17" FontWeight="SemiBold" Foreground="#ECEFF4"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+      <Button Grid.Column="2" x:Name="NextButton" Classes="flat" Background="#484C5E" Width="40" Height="36" Content="›" FontSize="22" />
+    </Grid>
+
+    <UniformGrid Grid.Row="1" Columns="4" Margin="0,12,0,12">
+      <Border Classes="tile" Margin="0,0,5,0"><StackPanel><TextBlock Classes="cap" Text="Работа за неделю" /><TextBlock Classes="val" x:Name="TotalText" /></StackPanel></Border>
+      <Border Classes="tile" Margin="5,0"><StackPanel><TextBlock Classes="cap" Text="В среднем за день" /><TextBlock Classes="val" x:Name="AvgText" /></StackPanel></Border>
+      <Border Classes="tile" Margin="5,0"><StackPanel><TextBlock Classes="cap" Text="Перерывов сделано" /><TextBlock Classes="val" x:Name="DoneText" /></StackPanel></Border>
+      <Border Classes="tile" Margin="5,0,0,0"><StackPanel><TextBlock Classes="cap" Text="Пропуск / отлож." /><TextBlock Classes="val" x:Name="SkippedText" /></StackPanel></Border>
+    </UniformGrid>
+
+    <local:WeekChart Grid.Row="2" x:Name="Chart" />
+
+    <Button Grid.Row="3" x:Name="OpenFileButton" Content="Открыть файл истории" Margin="0,12,0,0"
+            Background="Transparent" Foreground="#8C92A5" Padding="0" />
+  </Grid>
+</Window>

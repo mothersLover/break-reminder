@@ -1,6 +1,12 @@
-# build output (run build.bat)
+# build output
+bin/
+obj/
+publish/
+dist/
 *.exe
 *.pdb
 
-# Visual Studio local state
+# IDE local state
 .vs/
+.idea/
+*.user

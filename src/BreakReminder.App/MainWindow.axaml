@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BreakReminder.App.MainWindow"
+        Title="Отдыхалка"
+        Width="400" Height="620" CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1F26">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,22,0,12">
+    <TextBlock Grid.Row="0" Text="ВРЕМЯ РАБОТЫ" FontSize="12" FontWeight="Bold"
+               Foreground="#8C92A5" HorizontalAlignment="Center" />
+    <TextBlock Grid.Row="1" x:Name="WorkText" Text="00:00:00" FontSize="54" FontWeight="Light"
+               Foreground="#8C92A5" HorizontalAlignment="Center" />
+    <TextBlock Grid.Row="2" x:Name="StatusText" FontSize="12.5" Foreground="#8C92A5"
+               TextAlignment="Center" TextWrapping="Wrap" Height="40" Margin="16,2,16,4" />
+
+    <Button Grid.Row="3" x:Name="MainButton" Classes="round big" Width="264" Height="264"
+            HorizontalAlignment="Center" Background="#2ECC71">
+      <TextBlock x:Name="MainButtonText" Text="НАЧАТЬ" FontSize="27" FontWeight="SemiBold" Foreground="White" />
+    </Button>
+
+    <TextBlock Grid.Row="4" x:Name="NextText" FontSize="19" Foreground="#ECEFF4"
+               HorizontalAlignment="Center" Margin="0,10,0,6" Height="28" />
+
+    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="36">
+      <StackPanel Spacing="4" Width="96">
+        <Button x:Name="PauseButton" Classes="round small" Width="64" Height="64"
+                HorizontalAlignment="Center" Background="#484C5E">
+          <Path x:Name="PauseIcon" Fill="White" Width="18" Height="20" Stretch="Uniform" />
+        </Button>
+        <TextBlock x:Name="PauseCaption" Text="Пауза" FontSize="12" Foreground="#8C92A5" HorizontalAlignment="Center" />
+      </StackPanel>
+      <StackPanel Spacing="4" Width="96">
+        <Button x:Name="StatsButton" Classes="round small" Width="64" Height="64"
+                HorizontalAlignment="Center" Background="#484C5E">
+          <Path x:Name="StatsIcon" Fill="White" Width="20" Height="20" Stretch="Uniform" />
+        </Button>
+        <TextBlock Text="Статистика" FontSize="12" Foreground="#8C92A5" HorizontalAlignment="Center" />
+      </StackPanel>
+      <StackPanel Spacing="4" Width="96">
+        <Button x:Name="SettingsButton" Classes="round small" Width="64" Height="64"
+                HorizontalAlignment="Center" Background="#484C5E">
+          <Path x:Name="SettingsIcon" Fill="White" Width="26" Height="26" Stretch="Uniform" />
+        </Button>
+        <TextBlock Text="Настройки" FontSize="12" Foreground="#8C92A5" HorizontalAlignment="Center" />
+      </StackPanel>
+    </StackPanel>
+
+    <TextBlock Grid.Row="6" x:Name="StatsText" FontSize="12" Foreground="#8C92A5"
+               HorizontalAlignment="Center" Margin="0,12,0,0" />
+  </Grid>
+</Window>
