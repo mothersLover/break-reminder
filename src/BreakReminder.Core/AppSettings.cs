@@ -41,6 +41,17 @@ public sealed class AppSettings
     public bool CloseToTray = true;
     public bool PauseHotkey = true;
 
+    // ---- календарь (секретная iCal-ссылка) ----
+    public bool CalendarOn = false;
+    public string CalendarUrl = "";
+    public bool CalWaitMeetings = true;      // во время встречи напоминание ждёт
+    public bool CalBreakBefore = true;       // перерыв до встречи, если иначе он выпадет на неё
+    public int CalBreakBeforeMin = 10;
+    public bool CalMeetingAlert = true;      // напоминание о встрече
+    public int CalMeetingAlertMin = 5;
+    public bool CalChainLong = true;         // после длинной серии встреч — большой перерыв
+    public int CalChainMin = 120;
+
     // ---- тексты (советы хранятся в tips.txt / tips_long.txt) ----
     public string TitleShort = Texts.TitleShort;
     public string TitleLong = Texts.TitleLong;
@@ -95,7 +106,17 @@ public sealed class AppSettings
             s.CloseToTray = Bool(d, "CloseToTray", s.CloseToTray);
             s.PauseHotkey = Bool(d, "PauseHotkey", s.PauseHotkey);
 
-            if (d.TryGetValue("Sound", out var v)) s.Sound = SoundCatalog.Normalize(v);
+            s.CalendarOn = Bool(d, "CalendarOn", s.CalendarOn);
+            s.CalWaitMeetings = Bool(d, "CalWaitMeetings", s.CalWaitMeetings);
+            s.CalBreakBefore = Bool(d, "CalBreakBefore", s.CalBreakBefore);
+            s.CalBreakBeforeMin = Int(d, "CalBreakBeforeMin", s.CalBreakBeforeMin, 1, 60);
+            s.CalMeetingAlert = Bool(d, "CalMeetingAlert", s.CalMeetingAlert);
+            s.CalMeetingAlertMin = Int(d, "CalMeetingAlertMin", s.CalMeetingAlertMin, 1, 60);
+            s.CalChainLong = Bool(d, "CalChainLong", s.CalChainLong);
+            s.CalChainMin = Int(d, "CalChainMin", s.CalChainMin, 30, 480);
+
+            if (d.TryGetValue("CalendarUrl", out var v)) s.CalendarUrl = v;
+            if (d.TryGetValue("Sound", out v)) s.Sound = SoundCatalog.Normalize(v);
             if (d.TryGetValue("CustomSoundPath", out v)) s.CustomSoundPath = v;
             if (d.TryGetValue("Popup", out v) && Enum.TryParse(v, true, out PopupMode p)) s.Popup = p;
 
@@ -155,6 +176,15 @@ public sealed class AppSettings
             W("AutoEndMin", AutoEndMin);
             B("CloseToTray", CloseToTray);
             B("PauseHotkey", PauseHotkey);
+            B("CalendarOn", CalendarOn);
+            W("CalendarUrl", OneLine(CalendarUrl));
+            B("CalWaitMeetings", CalWaitMeetings);
+            B("CalBreakBefore", CalBreakBefore);
+            W("CalBreakBeforeMin", CalBreakBeforeMin);
+            B("CalMeetingAlert", CalMeetingAlert);
+            W("CalMeetingAlertMin", CalMeetingAlertMin);
+            B("CalChainLong", CalChainLong);
+            W("CalChainMin", CalChainMin);
             W("TitleShort", OneLine(TitleShort));
             W("TitleLong", OneLine(TitleLong));
             W("BtnDone", OneLine(BtnDone));

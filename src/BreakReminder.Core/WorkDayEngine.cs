@@ -18,6 +18,15 @@ public sealed class WorkDayEngine
     bool callActive, fullscreenActive;
     TimeSpan awayIdle;
 
+    // календарь
+    static readonly TimeSpan ChainGap = TimeSpan.FromMinutes(10); // встречи с паузой ≤ 10 мин — «подряд»
+    readonly HashSet<string> alertedMeetings = new();
+    readonly HashSet<string> breakBeforeOffered = new();
+    Meeting? lastMeeting;      // встреча, в которой были на прошлом тике
+    DateTime chainStart;
+    bool forceLong;            // следующий перерыв — большой (после длинной серии встреч)
+    string? pendingNote;       // пояснение к ближайшему напоминанию
+
     public WorkDayEngine(AppSettings settings, IEnvironmentProbe probe, IHistoryStore history, DateTime now)
     {
         this.settings = settings;
@@ -45,7 +54,19 @@ public sealed class WorkDayEngine
     public bool ReminderIsLong { get; private set; }
     public string StatusText { get; private set; }
 
-    public bool NextIsLong => settings.LongBreaks && Cycle >= settings.LongEvery - 1;
+    /// <summary>Пояснение к открытому напоминанию («через 8 мин встреча…»), или null.</summary>
+    public string? ReminderNote { get; private set; }
+
+    /// <summary>Встречи из календаря (задаёт приложение после загрузки).</summary>
+    public IReadOnlyList<Meeting> Meetings { get; set; } = Array.Empty<Meeting>();
+
+    public bool NextIsLong => forceLong || (settings.LongBreaks && Cycle >= settings.LongEvery - 1);
+
+    public Meeting? CurrentMeeting(DateTime now) =>
+        settings.CalendarOn ? Meetings.Where(m => m.Start <= now && now < m.End).MaxBy(m => m.End) : null;
+
+    public Meeting? NextMeeting(DateTime now) =>
+        settings.CalendarOn ? Meetings.Where(m => m.Start > now).MinBy(m => m.Start) : null;
 
     public AppSettings Settings
     {
@@ -67,6 +88,8 @@ public sealed class WorkDayEngine
     public event Action? ReminderCancelled;
     /// <summary>Короткое уведомление для пользователя (автоначало/автоконец дня).</summary>
     public event Action<string>? Notification;
+    /// <summary>Скоро встреча — показать напоминание о ней.</summary>
+    public event Action<Meeting>? MeetingSoon;
 
     // ---------- основной цикл ----------
 
@@ -78,10 +101,12 @@ public sealed class WorkDayEngine
         if (delta < TimeSpan.Zero) delta = TimeSpan.Zero; // перевели часы назад
 
         if (CheckAutoDay(now, prevTick)) return;
+        if (State != WorkState.Idle) CheckMeetingAlerts(now);
         if (State != WorkState.Running) return;
 
         Worked += delta;
         SinceLastBreak += delta;
+        TrackMeetingChain(now);
         if (ReminderOpen) return; // ждём ответа — отсчёт стоит
 
         TimeSpan rest = settings.BreakSpan;
@@ -110,6 +135,7 @@ public sealed class WorkDayEngine
                 StatusText = "С возвращением! Следующий перерыв в " + NextAt(now);
             }
             if (Remaining > TimeSpan.Zero) Remaining -= delta;
+            CheckBreakBeforeMeeting(now);
             if (Remaining <= TimeSpan.Zero)
             {
                 string? why = DndReasonNow(now);
@@ -137,6 +163,10 @@ public sealed class WorkDayEngine
         Done = Skipped = Snoozed = Cycle = 0;
         Away = false;
         DndReason = null;
+        forceLong = false;
+        pendingNote = null;
+        lastMeeting = null;
+        breakBeforeOffered.Clear();
         DayStart = lastTick = lastDayStart = now;
         StatusText = "Рабочий день начат. Первый перерыв в " + NextAt(now)
             + (settings.AutoDay ? "\nАвтозавершение в " + AutoEndFor(DayStart).ToString("HH:mm") : "");
@@ -176,6 +206,8 @@ public sealed class WorkDayEngine
     {
         if (!ReminderOpen) return;
         ReminderOpen = false;
+        ReminderNote = null;
+        if (ReminderIsLong && r != ReminderResult.Snooze) forceLong = false;
         switch (r)
         {
             case ReminderResult.Done:
@@ -205,6 +237,8 @@ public sealed class WorkDayEngine
     {
         if (ReminderOpen) return;
         ReminderIsLong = NextIsLong;
+        ReminderNote = pendingNote;
+        pendingNote = null;
         ReminderOpen = true;
         ReminderDue?.Invoke(ReminderIsLong);
     }
@@ -213,6 +247,8 @@ public sealed class WorkDayEngine
     {
         if (!ReminderOpen) return;
         ReminderOpen = false;
+        pendingNote ??= ReminderNote; // вернётся вместе с напоминанием
+        ReminderNote = null;
         ReminderCancelled?.Invoke();
     }
 
@@ -221,14 +257,103 @@ public sealed class WorkDayEngine
         Remaining = settings.Interval;
         SinceLastBreak = TimeSpan.Zero;
         DndReason = null;
+        pendingNote = null;
         StatusText = message;
     }
 
     /// <summary>Отдых известной длины: если он не короче большого перерыва — цикл начинается заново.</summary>
     void ResetAfterRest(string message, TimeSpan restLength)
     {
-        if (restLength >= settings.LongBreakSpan) Cycle = 0;
+        if (restLength >= settings.LongBreakSpan)
+        {
+            Cycle = 0;
+            forceLong = false;
+        }
         ResetAfterRest(message);
+    }
+
+    // ---------- календарь ----------
+
+    /// <summary>За N минут до встречи — событие MeetingSoon (один раз на встречу).</summary>
+    void CheckMeetingAlerts(DateTime now)
+    {
+        if (!settings.CalendarOn || !settings.CalMeetingAlert) return;
+        var lead = TimeSpan.FromMinutes(settings.CalMeetingAlertMin);
+        foreach (var m in Meetings)
+        {
+            if (m.Start <= now || m.Start - now > lead || !alertedMeetings.Add(m.Key)) continue;
+            MeetingSoon?.Invoke(m);
+        }
+    }
+
+    /// <summary>
+    /// Перерыв выпадает на встречу, а до неё осталось ≤ N минут — предлагаем отдохнуть сейчас.
+    /// Только если так лучше: отдохнуть раньше срока на меньшее время, чем пришлось бы ждать конца встреч.
+    /// Не дёргаем, если перерыв был совсем недавно (меньше половины интервала назад).
+    /// </summary>
+    void CheckBreakBeforeMeeting(DateTime now)
+    {
+        if (!settings.CalendarOn || !settings.CalBreakBefore || Remaining <= TimeSpan.Zero) return;
+        if (CurrentMeeting(now) != null) return;
+        var next = NextMeeting(now);
+        if (next == null) return;
+        var until = next.Start - now;
+        if (until > TimeSpan.FromMinutes(settings.CalBreakBeforeMin)) return;
+        DateTime due = now + Remaining;
+        if (due + settings.BreakSpan <= next.Start) return;                 // перерыв успевает до встречи
+        TimeSpan early = Remaining, late = ChainEnd(next) - due;           // насколько раньше / позже срока
+        if (early > late) return;                                           // лучше подождать конца встреч
+        if (SinceLastBreak < TimeSpan.FromTicks(settings.Interval.Ticks / 2)) return;
+        if (!breakBeforeOffered.Add(next.Key)) return;
+
+        Remaining = TimeSpan.Zero;
+        pendingNote = $"Через {Math.Max(1, (int)Math.Round(until.TotalMinutes))} мин встреча «{next.Title}» — лучше отдохнуть сейчас";
+    }
+
+    /// <summary>Конец серии встреч, начинающейся с этой (встречи с паузой ≤ 10 мин считаем подряд).</summary>
+    DateTime ChainEnd(Meeting first)
+    {
+        DateTime end = first.End;
+        bool extended = true;
+        while (extended)
+        {
+            extended = false;
+            foreach (var m in Meetings)
+                if (m.Start <= end + ChainGap && m.End > end)
+                {
+                    end = m.End;
+                    extended = true;
+                }
+        }
+        return end;
+    }
+
+    /// <summary>
+    /// Следим за серией встреч подряд; когда серия длиной ≥ порога закончилась — большой перерыв сразу.
+    /// Если в этот момент напоминание и так открыто — ничего не навязываем.
+    /// </summary>
+    void TrackMeetingChain(DateTime now)
+    {
+        var cm = CurrentMeeting(now);
+        if (cm != null)
+        {
+            if (lastMeeting == null || cm.Start - lastMeeting.End > ChainGap) chainStart = cm.Start;
+            lastMeeting = cm;
+            return;
+        }
+        if (lastMeeting == null) return;
+
+        // Между встречами: если следующая скоро — серия продолжается.
+        var next = NextMeeting(now);
+        if (next != null && next.Start - lastMeeting.End <= ChainGap) return;
+
+        var chain = lastMeeting.End - chainStart;
+        lastMeeting = null;
+        if (ReminderOpen || !settings.CalChainLong || chain < TimeSpan.FromMinutes(settings.CalChainMin)) return;
+
+        forceLong = true;
+        Remaining = TimeSpan.Zero;
+        pendingNote = $"После {Format.Minutes(chain)} встреч подряд — большой перерыв";
     }
 
     void RefreshBusy(DateTime now)
@@ -242,11 +367,12 @@ public sealed class WorkDayEngine
     bool BusyWithoutInput(DateTime now)
     {
         RefreshBusy(now);
-        return callActive || fullscreenActive;
+        return callActive || fullscreenActive || CurrentMeeting(now) != null; // встреча — не отдых
     }
 
     string? DndReasonNow(DateTime now)
     {
+        if (settings.CalWaitMeetings && CurrentMeeting(now) is { } m) return $"встреча «{m.Title}» до {m.End:HH:mm}";
         RefreshBusy(now);
         if (settings.DndCalls && callActive) return "идёт созвон";
         if (settings.DndFullscreen && fullscreenActive) return "открыта полноэкранная программа";

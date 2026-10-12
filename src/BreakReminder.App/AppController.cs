@@ -17,10 +17,12 @@ public sealed class AppController
     readonly MainWindow main;
     readonly TrayIcon tray;
     readonly NativeMenuItem miPause, miMain;
-    readonly DispatcherTimer timer;
+    readonly DispatcherTimer timer, calendarTimer;
     AppSettings settings;
     ReminderWindow? reminder;
     bool exiting, trayHintShown, blinkPhase;
+    string calendarStatus = "";
+    int calendarRequest; // номер последней загрузки — чтобы старый ответ не перезаписал новый
 
     public AppController(IClassicDesktopStyleApplicationLifetime desktop, bool startHidden)
     {
@@ -33,6 +35,7 @@ public sealed class AppController
         engine.ReminderDue += ShowReminder;
         engine.ReminderCancelled += CloseReminderWindow;
         engine.Notification += ToastWindow.Show;
+        engine.MeetingSoon += m => MeetingWindow.Show(m, settings, platform);
 
         main = new MainWindow { Icon = Icons.Clock(Palette.Green) };
         main.MainClicked += OnMainClicked;
@@ -72,6 +75,11 @@ public sealed class AppController
             Render();
         };
         timer.Start();
+
+        calendarTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
+        calendarTimer.Tick += (_, _) => RefreshCalendar();
+        calendarTimer.Start();
+        RefreshCalendar();
 
         // Следующие запуски программы передают сюда команды ("show", "toggle-pause").
         SingleInstance.Listen(cmd => Dispatcher.UIThread.Post(() => HandleCommand(cmd)));
@@ -125,7 +133,7 @@ public sealed class AppController
     void ShowReminder(bool isLong)
     {
         settings.ReloadTips();
-        reminder = new ReminderWindow(settings, engine.SinceLastBreak, false, isLong, platform);
+        reminder = new ReminderWindow(settings, engine.SinceLastBreak, false, isLong, platform, engine.ReminderNote);
         reminder.Answered += r =>
         {
             reminder = null;
@@ -144,14 +152,43 @@ public sealed class AppController
     async void OpenSettings()
     {
         ShowMain();
-        var w = new SettingsWindow(settings, platform);
+        var w = new SettingsWindow(settings, platform, calendarStatus);
         var result = await w.ShowDialog<AppSettings?>(main);
         if (result == null) return;
+        bool calendarChanged = result.CalendarOn != settings.CalendarOn || result.CalendarUrl != settings.CalendarUrl;
         settings = result;
         settings.Save();
         engine.Settings = settings;
         platform.SetAutostart(w.AutostartChecked);
         ApplyHotkey();
+        if (calendarChanged) RefreshCalendar();
+        Render();
+    }
+
+    /// <summary>Загрузить встречи по ссылке (в фоне); при ошибке оставляем прежние.</summary>
+    async void RefreshCalendar()
+    {
+        int request = ++calendarRequest;
+        if (!settings.CalendarOn || string.IsNullOrWhiteSpace(settings.CalendarUrl))
+        {
+            engine.Meetings = Array.Empty<Meeting>();
+            calendarStatus = settings.CalendarOn ? "Ссылка не указана." : "";
+            return;
+        }
+        try
+        {
+            var now = DateTime.Now;
+            var meetings = await CalendarFeed.FetchAsync(settings.CalendarUrl, now);
+            if (request != calendarRequest) return;
+            engine.Meetings = meetings;
+            int today = meetings.Count(m => m.Start.Date == now.Date);
+            calendarStatus = $"Обновлено в {DateTime.Now:HH:mm}. Встреч сегодня: {today}.";
+        }
+        catch (Exception e)
+        {
+            if (request != calendarRequest) return;
+            calendarStatus = $"Не удалось обновить ({DateTime.Now:HH:mm}): {e.Message}";
+        }
         Render();
     }
 
@@ -230,6 +267,7 @@ public sealed class AppController
     {
         exiting = true;
         timer.Stop();
+        calendarTimer.Stop();
         engine.EndDay(DateTime.Now);
         CloseReminderWindow();
         tray.IsVisible = false;

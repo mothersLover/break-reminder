@@ -59,5 +59,12 @@ public partial class MainWindow : Window
         StatsText.Text = idle && e.Done + e.Skipped + e.Snoozed == 0
             ? ""
             : $"Перерывы:  сделано {e.Done}  ·  пропущено {e.Skipped}  ·  отложено {e.Snoozed}";
+
+        // календарь: текущая или ближайшая встреча сегодня
+        var cur = e.CurrentMeeting(now);
+        var nxt = cur == null ? e.NextMeeting(now) : null;
+        MeetingText.Text = cur != null ? $"Сейчас встреча: {cur.Title} до {cur.End:HH:mm}"
+            : nxt != null && nxt.Start.Date == now.Date ? $"Встреча в {nxt.Start:HH:mm}: {nxt.Title}"
+            : "";
     }
 }

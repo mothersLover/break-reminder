@@ -13,7 +13,8 @@
           <TextBlock x:Name="TitleText" FontSize="27" FontWeight="Bold" Foreground="#ECEFF4" />
           <TextBlock x:Name="TipText" FontSize="16" Foreground="#ECEFF4" TextWrapping="Wrap"
                      MaxLines="2" TextTrimming="CharacterEllipsis" Height="48" Margin="0,4,0,0" />
-          <TextBlock x:Name="InfoText" FontSize="12.5" Foreground="#8C92A5" Margin="0,4,0,14" />
+          <TextBlock x:Name="InfoText" FontSize="12.5" Foreground="#8C92A5" Margin="0,4,0,14"
+                     TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
           <Grid ColumnDefinitions="*,10,*,10,*" Height="46">
             <Button Grid.Column="0" x:Name="DoneButton" Classes="flat" Background="#2ECC71" />
             <Button Grid.Column="2" x:Name="SnoozeButton" Classes="flat" Background="#484C5E" />

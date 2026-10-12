@@ -2,10 +2,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="BreakReminder.App.MainWindow"
         Title="Отдыхалка"
-        Width="400" Height="620" CanResize="False"
+        Width="400" Height="642" CanResize="False"
         WindowStartupLocation="CenterScreen"
         Background="#1E1F26">
-  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,22,0,12">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,22,0,12">
     <TextBlock Grid.Row="0" Text="ВРЕМЯ РАБОТЫ" FontSize="12" FontWeight="Bold"
                Foreground="#8C92A5" HorizontalAlignment="Center" />
     <TextBlock Grid.Row="1" x:Name="WorkText" Text="00:00:00" FontSize="54" FontWeight="Light"
@@ -47,5 +47,7 @@
 
     <TextBlock Grid.Row="6" x:Name="StatsText" FontSize="12" Foreground="#8C92A5"
                HorizontalAlignment="Center" Margin="0,12,0,0" />
+    <TextBlock Grid.Row="7" x:Name="MeetingText" FontSize="12" Foreground="#5DADE2"
+               HorizontalAlignment="Center" Margin="16,4,16,0" TextTrimming="CharacterEllipsis" />
   </Grid>
 </Window>

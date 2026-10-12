@@ -13,9 +13,9 @@ public partial class SettingsWindow : Window
 
     public bool AutostartChecked => AutostartCheck.IsChecked == true;
 
-    public SettingsWindow() : this(new AppSettings(), null!) { }
+    public SettingsWindow() : this(new AppSettings(), null!, "") { }
 
-    public SettingsWindow(AppSettings s, IPlatform platform)
+    public SettingsWindow(AppSettings s, IPlatform platform, string calendarStatus)
     {
         InitializeComponent();
         original = s;
@@ -71,6 +71,24 @@ public partial class SettingsWindow : Window
                               "(Клавиатура → Свои сочетания клавиш) любое сочетание на команду:\n" +
                               $"\"{Environment.GetEnvironmentVariable("APPIMAGE") ?? Environment.ProcessPath}\" --toggle-pause";
         }
+
+        // ---- Календарь ----
+        CalendarCheck.IsChecked = s.CalendarOn;
+        CalendarUrlBox.Text = s.CalendarUrl;
+        CalendarStatusText.Text = calendarStatus;
+        CalWaitCheck.IsChecked = s.CalWaitMeetings;
+        CalBeforeCheck.IsChecked = s.CalBreakBefore;
+        CalBeforeNum.Value = s.CalBreakBeforeMin;
+        CalAlertCheck.IsChecked = s.CalMeetingAlert;
+        CalAlertNum.Value = s.CalMeetingAlertMin;
+        CalChainCheck.IsChecked = s.CalChainLong;
+        CalChainNum.Value = s.CalChainMin;
+        CalendarRevealCheck.IsCheckedChanged += (_, _) => CalendarUrlBox.RevealPassword = CalendarRevealCheck.IsChecked == true;
+        CalendarCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        CalBeforeCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        CalAlertCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        CalChainCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        CalendarTestButton.Click += async (_, _) => await TestCalendar();
 
         // ---- Тексты ----
         FillTexts(s.TitleShort, s.TitleLong, s.TipsShort, s.TipsLong, s.BtnDone, s.BtnSnooze, s.BtnSkip);
@@ -145,8 +163,44 @@ public partial class SettingsWindow : Window
         UpdateEnabled();
     }
 
+    async Task TestCalendar()
+    {
+        var url = CalendarUrlBox.Text ?? "";
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            CalendarStatusText.Text = "Вставь ссылку на календарь.";
+            return;
+        }
+        CalendarTestButton.IsEnabled = false;
+        CalendarStatusText.Text = "Загружаю…";
+        try
+        {
+            var now = DateTime.Now;
+            var meetings = await CalendarFeed.FetchAsync(url, now);
+            int today = meetings.Count(m => m.Start.Date == now.Date);
+            int tomorrow = meetings.Count(m => m.Start.Date == now.Date.AddDays(1));
+            var next = meetings.FirstOrDefault(m => m.End > now);
+            CalendarStatusText.Text = $"Работает. Встреч сегодня: {today}, завтра: {tomorrow}."
+                + (next != null ? $"\nБлижайшая: {next.Title}, {(next.Start.Date == now.Date ? "сегодня" : next.Start.ToString("d MMMM"))} в {next.Start:HH:mm}" : "");
+        }
+        catch (Exception e)
+        {
+            CalendarStatusText.Text = "Не получилось: " + e.Message;
+        }
+        finally
+        {
+            CalendarTestButton.IsEnabled = true;
+        }
+    }
+
     void UpdateEnabled()
     {
+        bool cal = CalendarCheck.IsChecked == true;
+        CalWaitCheck.IsEnabled = CalBeforeCheck.IsEnabled = CalAlertCheck.IsEnabled = CalChainCheck.IsEnabled = cal;
+        CalBeforeNum.IsEnabled = cal && CalBeforeCheck.IsChecked == true;
+        CalAlertNum.IsEnabled = cal && CalAlertCheck.IsChecked == true;
+        CalChainNum.IsEnabled = cal && CalChainCheck.IsChecked == true;
+
         bool snd = SoundCheck.IsChecked == true;
         string key = SoundCatalog.Keys[Math.Max(0, SoundCombo.SelectedIndex)];
         SoundCombo.IsEnabled = PlayButton.IsEnabled = RepeatCheck.IsEnabled = snd;
@@ -190,6 +244,16 @@ public partial class SettingsWindow : Window
         s.AutoEndMin = Minutes(EndTimePicker, s.AutoEndMin);
         s.CloseToTray = TrayCheck.IsChecked == true;
         s.PauseHotkey = HotkeyCheck.IsChecked == true;
+
+        s.CalendarOn = CalendarCheck.IsChecked == true;
+        s.CalendarUrl = CalendarFeed.NormalizeUrl(CalendarUrlBox.Text ?? "");
+        s.CalWaitMeetings = CalWaitCheck.IsChecked == true;
+        s.CalBreakBefore = CalBeforeCheck.IsChecked == true;
+        s.CalBreakBeforeMin = N(CalBeforeNum, s.CalBreakBeforeMin);
+        s.CalMeetingAlert = CalAlertCheck.IsChecked == true;
+        s.CalMeetingAlertMin = N(CalAlertNum, s.CalMeetingAlertMin);
+        s.CalChainLong = CalChainCheck.IsChecked == true;
+        s.CalChainMin = N(CalChainNum, s.CalChainMin);
 
         s.TitleShort = Or(TitleShortBox.Text, Texts.TitleShort);
         s.TitleLong = Or(TitleLongBox.Text, Texts.TitleLong);

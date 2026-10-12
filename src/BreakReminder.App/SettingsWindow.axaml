@@ -112,6 +112,64 @@
         </ScrollViewer>
       </TabItem>
 
+      <!-- ===================== Календарь ===================== -->
+      <TabItem Header="Календарь">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Подключение" />
+              <CheckBox x:Name="CalendarCheck" Content="Интеграция с календарём" />
+              <TextBlock Classes="hint" Text="Секретная ссылка на календарь в формате iCal (.ics):" Margin="0,8,0,4" />
+              <TextBox x:Name="CalendarUrlBox" PasswordChar="•"
+                       Watermark="https://calendar.google.com/calendar/ical/…/basic.ics" />
+              <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,8,0,0">
+                <Button x:Name="CalendarTestButton" Content="Проверить ссылку" />
+                <CheckBox x:Name="CalendarRevealCheck" Content="Показать ссылку" />
+              </StackPanel>
+              <TextBlock x:Name="CalendarStatusText" Classes="hint" Margin="0,8,0,0" />
+
+              <TextBlock Classes="h" Text="Где взять ссылку" />
+              <TextBlock Classes="hint" Text="Google: настройки нужного календаря → «Интеграция календаря» → «Закрытый адрес в формате iCal»." />
+              <TextBlock Classes="hint" Margin="0,4,0,0" Text="Outlook / Microsoft 365: Настройки → Календарь → Общие календари → «Опубликовать календарь» → ссылка ICS." />
+              <TextBlock Classes="hint" Margin="0,4,0,0" Text="Яндекс: настройки календаря → «Экспорт» → ссылка." />
+              <TextBlock Classes="hint" Margin="0,4,0,0" Text="iCloud: общий доступ к календарю → «Публичный календарь»." />
+              <TextBlock Classes="hint" Margin="0,10,0,0" Foreground="#E0B060"
+                         Text="Ссылка хранится только на этом компьютере. Любой, у кого она есть, видит твой календарь — не пересылай её." />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Что делать со встречами" />
+              <CheckBox x:Name="CalWaitCheck">
+                <TextBlock TextWrapping="Wrap" Text="Не показывать напоминание во время встречи — показать сразу после неё" />
+              </CheckBox>
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,6,0,0">
+                <CheckBox x:Name="CalBeforeCheck">
+                  <TextBlock TextWrapping="Wrap" Text="Если перерыв выпадет на встречу — предложить его до встречи, за" />
+                </CheckBox>
+                <NumericUpDown Grid.Column="1" x:Name="CalBeforeNum" Minimum="1" Maximum="60" Width="120" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="мин" Margin="10,0,0,0" VerticalAlignment="Center" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,6,0,0">
+                <CheckBox x:Name="CalAlertCheck" Content="Напоминать о встрече за" />
+                <NumericUpDown Grid.Column="1" x:Name="CalAlertNum" Minimum="1" Maximum="60" Width="120" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="мин" Margin="10,0,0,0" VerticalAlignment="Center" />
+              </Grid>
+              <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,6,0,0">
+                <CheckBox x:Name="CalChainCheck">
+                  <TextBlock TextWrapping="Wrap" Text="Большой перерыв после встреч подряд дольше" />
+                </CheckBox>
+                <NumericUpDown Grid.Column="1" x:Name="CalChainNum" Minimum="30" Maximum="480" Increment="15" Width="120" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="мин" Margin="10,0,0,0" VerticalAlignment="Center" />
+              </Grid>
+              <TextBlock Classes="hint" Margin="0,12,0,0"
+                         Text="Встреча не считается отдыхом, даже если не трогать мышь. Учитываются только «занятые» встречи: события на весь день, отменённые и помеченные «свободен» пропускаются." />
+              <TextBlock Classes="hint" Margin="0,6,0,0"
+                         Text="Программа обновляет календарь раз в 10 минут. Сам Google обновляет опубликованную ссылку с задержкой (бывает до нескольких часов), Outlook — около получаса." />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
       <!-- ===================== Тексты уведомлений ===================== -->
       <TabItem Header="Тексты уведомлений">
         <ScrollViewer>

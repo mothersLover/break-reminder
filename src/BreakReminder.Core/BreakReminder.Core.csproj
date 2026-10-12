@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Вся логика без UI и без системных вызовов: таймеры, перерывы, расписание, настройки, история. -->
+  <!-- Вся логика без UI и без системных вызовов: таймеры, перерывы, расписание, календарь, настройки, история. -->
+  <ItemGroup>
+    <PackageReference Include="Ical.Net" Version="4.2.0" />
+  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="BreakReminder.Core.Tests" />
   </ItemGroup>

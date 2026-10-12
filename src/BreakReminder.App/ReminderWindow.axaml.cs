@@ -27,7 +27,7 @@ public partial class ReminderWindow : Window
     // для дизайнера XAML
     public ReminderWindow() : this(new AppSettings(), TimeSpan.Zero, true, false, null!) { }
 
-    public ReminderWindow(AppSettings settings, TimeSpan withoutBreak, bool preview, bool isLong, IPlatform platform)
+    public ReminderWindow(AppSettings settings, TimeSpan withoutBreak, bool preview, bool isLong, IPlatform platform, string? note = null)
     {
         InitializeComponent();
         s = settings;
@@ -46,6 +46,12 @@ public partial class ReminderWindow : Window
             ? "Это тестовое уведомление."
             : (isLong ? $"Перерыв {s.LongBreakMin} мин" : $"Перерыв {s.BreakMin} мин")
               + (withoutBreak.TotalMinutes >= 1 ? "  ·  без перерыва " + Format.Minutes(withoutBreak) : "");
+        if (note != null)
+        {
+            // пояснение от календаря важнее обычной строки
+            InfoText.Text = note;
+            InfoText.Foreground = Palette.B(Palette.Text);
+        }
         Frame.Background = Palette.B(accent);
 
         DoneButton.Content = s.BtnDone;
