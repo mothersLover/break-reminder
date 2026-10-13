@@ -90,13 +90,21 @@ jobs:
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
-          awk -v ver="$v" '
-            index($0, "## [" ver "]") == 1 { on = 1; next }
-            on && /^## \[/ { exit }
-            on && /^\[[^]]+\]: / { exit }
-            on { print }
-          ' CHANGELOG.md > notes.md
-          [ -s notes.md ] || echo "_Описание изменений — в CHANGELOG.md._" > notes.md
+          section() {
+            awk -v name="$1" '
+              index($0, "## [" name "]") == 1 { on = 1; next }
+              on && /^## \[/ { exit }
+              on && /^\[[^]]+\]: / { exit }
+              on { print }
+            ' CHANGELOG.md
+          }
+          section "$v" > notes.md
+          # Забыли переименовать «Unreleased» в номер версии перед тегом — берём «Unreleased».
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::warning::В CHANGELOG.md нет раздела [$v] — взят раздел [Unreleased]. Переименуй его в [$v]."
+            section "Unreleased" > notes.md
+          fi
+          grep -q '[^[:space:]]' notes.md || echo "_Описание изменений — в CHANGELOG.md._" > notes.md
           cat >> notes.md <<'EOF'
 
           ## Скачать

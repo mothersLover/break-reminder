@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [4.2.0] — 2026-10-13
+
 ### Добавлено
 - **Обновление программы.** При запуске (и раз в сутки) программа проверяет новую версию на GitHub
   и предлагает обновиться: окно «Доступна новая версия» с описанием изменений и кнопками
@@ -73,7 +75,8 @@
 - Статистика по неделям, настраиваемые тексты уведомлений.
 - Автоматическое начало и конец рабочего дня по расписанию.
 
-[Unreleased]: https://github.com/mothersLover/break-reminder/compare/v4.1.0...HEAD
+[Unreleased]: https://github.com/mothersLover/break-reminder/compare/v4.2.0...HEAD
+[4.2.0]: https://github.com/mothersLover/break-reminder/compare/v4.1.0...v4.2.0
 [4.1.0]: https://github.com/mothersLover/break-reminder/compare/v4.0.0...v4.1.0
 [4.0.0]: https://github.com/mothersLover/break-reminder/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/mothersLover/break-reminder/compare/v2.0.0...v3.0.0
