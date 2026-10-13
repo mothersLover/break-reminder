@@ -28,12 +28,16 @@ sealed class Rig
 {
     public readonly FakeProbe Probe = new();
     public readonly MemoryHistory History = new();
-    public readonly AppSettings Settings = new() { IntervalMin = 50, BreakMin = 5, SnoozeMin = 5, LongEvery = 4, LongBreakMin = 15 };
+    // 20-20-20 по умолчанию выключен в тестах — включают те, что про него
+    public readonly AppSettings Settings = new() { IntervalMin = 50, BreakMin = 5, SnoozeMin = 5, LongEvery = 4, LongBreakMin = 15, EyeRest = false };
     public readonly WorkDayEngine Engine;
     public DateTime Now;
-    public int RemindersShown, RemindersCancelled;
+    public int RemindersShown, RemindersCancelled, EyeRests;
     public bool LastWasLong;
+    /// <summary>Автоматические начала/концы дня ("start"/"end").</summary>
     public readonly List<string> Notifications = new();
+    public readonly List<(DayReport Report, bool Auto)> Reports = new();
+    public readonly List<bool> Starts = new();
 
     public Rig(DateTime start, Action<AppSettings>? configure = null)
     {
@@ -42,7 +46,9 @@ sealed class Rig
         Engine = new WorkDayEngine(Settings, Probe, History, Now);
         Engine.ReminderDue += isLong => { RemindersShown++; LastWasLong = isLong; };
         Engine.ReminderCancelled += () => RemindersCancelled++;
-        Engine.Notification += n => Notifications.Add(n);
+        Engine.DayStarted += auto => { Starts.Add(auto); if (auto) Notifications.Add("start"); };
+        Engine.DayEnded += (rep, auto) => { Reports.Add((rep, auto)); if (auto) Notifications.Add("end"); };
+        Engine.EyeRestDue += () => EyeRests++;
     }
 
     /// <summary>Прокрутить время вперёд тиками по 0.5 с (как настоящий таймер).</summary>

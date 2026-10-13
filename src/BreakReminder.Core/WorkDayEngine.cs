@@ -3,6 +3,43 @@ namespace BreakReminder.Core;
 public enum WorkState { Idle, Running, Paused }
 public enum ReminderResult { Done, Snooze, Skip }
 
+/// <summary>Итоги рабочего дня — для отчёта в конце дня.</summary>
+public sealed record DayReport(
+    DateTime Start, DateTime End, TimeSpan Worked,
+    int Done, int Skipped, int Snoozed, int EyeRests,
+    int Meetings, TimeSpan MeetingTime, bool Auto);
+
+/// <summary>«Главное на завтра» из вечернего отчёта — показывается в утреннем приветствии.</summary>
+public static class DayPlan
+{
+    static string FilePath => Path.Combine(Paths.DataDir, "plan.txt");
+
+    public static void Save(DateTime date, string text)
+    {
+        try
+        {
+            Directory.CreateDirectory(Paths.DataDir);
+            if (string.IsNullOrWhiteSpace(text)) File.Delete(FilePath);
+            else File.WriteAllText(FilePath, date.ToString("yyyy-MM-dd") + "\n" + text.Trim());
+        }
+        catch { }
+    }
+
+    /// <summary>План, записанный в последние несколько дней (до сегодня включительно), или null.</summary>
+    public static string? Load(DateTime today)
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return null;
+            var lines = File.ReadAllText(FilePath).Split('\n', 2);
+            if (lines.Length < 2 || !DateTime.TryParse(lines[0], System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var d)) return null;
+            return d.Date <= today.Date && today.Date - d.Date <= TimeSpan.FromDays(4) ? lines[1].Trim() : null;
+        }
+        catch { return null; }
+    }
+}
+
 /// <summary>Состояние рабочего дня для перезапуска программы (session.json).</summary>
 public sealed class EngineSnapshot
 {
@@ -17,6 +54,7 @@ public sealed class EngineSnapshot
     public int Skipped { get; set; }
     public int Snoozed { get; set; }
     public int Cycle { get; set; }
+    public int EyeRests { get; set; }
     public bool ForceLong { get; set; }
 
     public static string FilePath => Path.Combine(Paths.DataDir, "session.json");
@@ -124,10 +162,22 @@ public sealed class WorkDayEngine
     public event Action<bool>? ReminderDue;
     /// <summary>Напоминание нужно закрыть без ответа (пауза, конец дня).</summary>
     public event Action? ReminderCancelled;
-    /// <summary>Короткое уведомление для пользователя (автоначало/автоконец дня).</summary>
-    public event Action<string>? Notification;
+    /// <summary>Рабочий день начался (аргумент — автоматически ли). Не вызывается при восстановлении после обновления.</summary>
+    public event Action<bool>? DayStarted;
+    /// <summary>Рабочий день закончился — итоги для отчёта (второй аргумент — автоматически ли).</summary>
+    public event Action<DayReport, bool>? DayEnded;
+    /// <summary>Пора дать отдых глазам (20-20-20).</summary>
+    public event Action? EyeRestDue;
     /// <summary>Скоро встреча — показать напоминание о ней.</summary>
     public event Action<Meeting>? MeetingSoon;
+
+    /// <summary>Сколько раз за день был отдых для глаз.</summary>
+    public int EyeRests { get; private set; }
+    /// <summary>Идёт перерыв с таймером (нажали «Начать перерыв»).</summary>
+    public bool OnBreak { get; private set; }
+    public DateTime BreakUntil { get; private set; }
+
+    TimeSpan eyeElapsed;      // работа с последнего отдыха глаз
 
     // ---------- основной цикл ----------
 
@@ -163,6 +213,7 @@ public sealed class WorkDayEngine
             Remaining = settings.Interval;
             SinceLastBreak = TimeSpan.Zero;
             DndReason = null;
+            eyeElapsed = TimeSpan.Zero;
         }
         else
         {
@@ -173,6 +224,7 @@ public sealed class WorkDayEngine
                 StatusText = "С возвращением! Следующий перерыв в " + NextAt(now);
             }
             if (Remaining > TimeSpan.Zero) Remaining -= delta;
+            CheckEyeRest(now, delta);
             CheckBreakBeforeMeeting(now);
             if (Remaining <= TimeSpan.Zero)
             {
@@ -193,12 +245,13 @@ public sealed class WorkDayEngine
 
     // ---------- действия пользователя ----------
 
-    public void StartDay(DateTime now)
+    public void StartDay(DateTime now, bool auto = false)
     {
         State = WorkState.Running;
-        Worked = SinceLastBreak = TimeSpan.Zero;
+        Worked = SinceLastBreak = eyeElapsed = TimeSpan.Zero;
         Remaining = settings.Interval;
-        Done = Skipped = Snoozed = Cycle = 0;
+        Done = Skipped = Snoozed = Cycle = EyeRests = 0;
+        OnBreak = false;
         Away = false;
         DndReason = null;
         forceLong = false;
@@ -206,17 +259,61 @@ public sealed class WorkDayEngine
         lastMeeting = null;
         breakBeforeOffered.Clear();
         DayStart = lastTick = lastDayStart = now;
-        StatusText = "Рабочий день начат. Первый перерыв в " + NextAt(now)
+        StatusText = (auto ? "Рабочий день начат автоматически." : "Рабочий день начат.")
+            + " Первый перерыв в " + NextAt(now)
             + (settings.AutoDay ? "\nАвтозавершение в " + AutoEndFor(DayStart).ToString("HH:mm") : "");
+        DayStarted?.Invoke(auto);
     }
 
-    public void EndDay(DateTime now)
+    public void EndDay(DateTime now, bool auto = false)
     {
         if (State == WorkState.Idle) return;
         CloseReminder();
         State = WorkState.Idle;
+        OnBreak = false;
         history.Append(DayStart, now, TodaySoFar());
         StatusText = $"День окончен: {Format.Minutes(Worked)} работы\nперерывов {Done}, пропущено {Skipped}";
+        DayEnded?.Invoke(BuildReport(now, auto), auto);
+    }
+
+    DayReport BuildReport(DateTime end, bool auto)
+    {
+        int meetings = 0;
+        TimeSpan meetingTime = TimeSpan.Zero;
+        if (settings.CalendarOn)
+            foreach (var m in Meetings)
+            {
+                var from = m.Start > DayStart ? m.Start : DayStart;
+                var to = m.End < end ? m.End : end;
+                if (to <= from) continue;
+                meetings++;
+                meetingTime += to - from;
+            }
+        return new DayReport(DayStart, end, Worked, Done, Skipped, Snoozed, EyeRests, meetings, meetingTime, auto);
+    }
+
+    /// <summary>Нажали «Начать перерыв»: отсчёт перерыва (напоминание остаётся открытым до «Вернуться к работе»).</summary>
+    public TimeSpan BeginBreak(DateTime now)
+    {
+        var length = ReminderIsLong ? settings.LongBreakSpan : settings.BreakSpan;
+        OnBreak = true;
+        BreakUntil = now + length;
+        StatusText = (ReminderIsLong ? "Большой перерыв" : "Перерыв") + " до " + BreakUntil.ToString("HH:mm");
+        return length;
+    }
+
+    /// <summary>20-20-20: каждые N минут работы — отдых для глаз, если сейчас уместно.</summary>
+    void CheckEyeRest(DateTime now, TimeSpan delta)
+    {
+        if (!settings.EyeRest) return;
+        eyeElapsed += delta;
+        if (eyeElapsed < TimeSpan.FromMinutes(settings.EyeEveryMin)) return;
+        eyeElapsed = TimeSpan.Zero;
+        // Не мешаем: скоро настоящий перерыв, идёт встреча/созвон/полноэкранная программа.
+        if (Remaining <= TimeSpan.FromMinutes(2)) return;
+        if (CurrentMeeting(now) != null || BusyWithoutInput(now)) return;
+        EyeRests++;
+        EyeRestDue?.Invoke();
     }
 
     public void TogglePause(DateTime now)
@@ -233,6 +330,7 @@ public sealed class WorkDayEngine
             TimeSpan p = now - pauseStart;
             State = WorkState.Running;
             lastTick = now;
+            eyeElapsed = TimeSpan.Zero;
             if (p >= settings.BreakSpan)
                 ResetAfterRest("Пауза " + Format.Minutes(p) + " — засчитано как перерыв", p);
             else
@@ -244,6 +342,7 @@ public sealed class WorkDayEngine
     {
         if (!ReminderOpen) return;
         ReminderOpen = false;
+        OnBreak = false;
         ReminderNote = null;
         if (ReminderIsLong && r != ReminderResult.Snooze) forceLong = false;
         switch (r)
@@ -285,6 +384,7 @@ public sealed class WorkDayEngine
     {
         if (!ReminderOpen) return;
         ReminderOpen = false;
+        OnBreak = false;
         pendingNote ??= ReminderNote; // вернётся вместе с напоминанием
         ReminderNote = null;
         ReminderCancelled?.Invoke();
@@ -294,6 +394,7 @@ public sealed class WorkDayEngine
     {
         Remaining = settings.Interval;
         SinceLastBreak = TimeSpan.Zero;
+        eyeElapsed = TimeSpan.Zero;
         DndReason = null;
         pendingNote = null;
         StatusText = message;
@@ -454,9 +555,7 @@ public sealed class WorkDayEngine
             // Один раз за «окно»: если в этом окне день уже начинали (вручную или сами) — не трогаем.
             DateTime? ws = CurrentAutoWindowStart(now);
             if (ws == null || lastDayStart >= ws.Value || probe.IsScreenLocked()) return false;
-            StartDay(now);
-            StatusText = "Рабочий день начат автоматически.\nАвтозавершение в " + AutoEndFor(DayStart).ToString("HH:mm");
-            Notification?.Invoke("Рабочий день начат автоматически в " + now.ToString("HH:mm"));
+            StartDay(now, auto: true);
             return true;
         }
 
@@ -464,9 +563,8 @@ public sealed class WorkDayEngine
         if (now < endAt) return false;
         // Если компьютер спал и проснулся после конца — работу считаем только до времени конца.
         if (State == WorkState.Running && endAt > prevTick) Worked += endAt - prevTick;
-        EndDay(endAt);
+        EndDay(endAt, auto: true);
         StatusText = $"День завершён автоматически в {endAt:HH:mm}: {Format.Minutes(Worked)} работы\nперерывов {Done}, пропущено {Skipped}";
-        Notification?.Invoke("Рабочий день завершён: " + Format.Minutes(Worked) + " работы");
         return true;
     }
 
@@ -486,6 +584,7 @@ public sealed class WorkDayEngine
         Skipped = Skipped,
         Snoozed = Snoozed,
         Cycle = Cycle,
+        EyeRests = EyeRests,
         ForceLong = forceLong
     };
 
@@ -502,6 +601,7 @@ public sealed class WorkDayEngine
         Skipped = s.Skipped;
         Snoozed = s.Snoozed;
         Cycle = s.Cycle;
+        EyeRests = s.EyeRests;
         forceLong = s.ForceLong;
         lastTick = s.SavedAt;
         ReminderOpen = false;

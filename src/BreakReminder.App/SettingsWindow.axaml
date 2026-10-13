@@ -52,10 +52,13 @@
               <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Большим будет каждый" /><NumericUpDown Grid.Column="1" x:Name="LongEveryNum" Minimum="2" Maximum="10" /><TextBlock Grid.Column="2" Classes="unit" Text="-й перерыв" /></Grid>
               <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Длительность большого" /><NumericUpDown Grid.Column="1" x:Name="LongMinNum" Minimum="5" Maximum="120" /><TextBlock Grid.Column="2" Classes="unit" Text="мин" /></Grid>
 
-              <TextBlock Classes="h" Text="Не беспокоить" />
-              <CheckBox x:Name="DndCallsCheck" Content="Не показывать, пока идёт созвон (занят микрофон)" />
-              <CheckBox x:Name="DndFullCheck" Content="Не показывать поверх полноэкранных программ" />
-              <TextBlock x:Name="DndFullHint" Classes="hint" Margin="28,0,0,0" IsVisible="False" />
+              <TextBlock Classes="h" Text="Перерыв и глаза" />
+              <CheckBox x:Name="GuidedCheck">
+                <TextBlock TextWrapping="Wrap" Text="Перерыв с подсказками: «Начать перерыв» — таймер и упражнения по шагам" />
+              </CheckBox>
+              <CheckBox x:Name="EyeCheck" Content="Отдых для глаз «20-20-20»" Margin="0,4,0,0" />
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Напоминать каждые" Margin="28,0,0,0" /><NumericUpDown Grid.Column="1" x:Name="EyeEveryNum" Minimum="5" Maximum="120" /><TextBlock Grid.Column="2" Classes="unit" Text="мин" /></Grid>
+              <Grid Classes="row" ColumnDefinitions="210,Auto,Auto"><TextBlock Text="Смотреть вдаль" Margin="28,0,0,0" /><NumericUpDown Grid.Column="1" x:Name="EyeSecondsNum" Minimum="5" Maximum="120" Increment="5" /><TextBlock Grid.Column="2" Classes="unit" Text="сек" /></Grid>
             </StackPanel>
 
             <StackPanel Grid.Column="2">
@@ -107,6 +110,52 @@
               <CheckBox x:Name="TrayCheck" Content="Крестик сворачивает в трей, пока идёт рабочий день" />
               <CheckBox x:Name="HotkeyCheck" Content="Пауза / продолжить горячей клавишей" />
               <TextBlock x:Name="HotkeyHint" Classes="hint" Margin="28,0,0,0" />
+
+              <TextBlock Classes="h" Text="Не беспокоить" />
+              <CheckBox x:Name="DndCallsCheck" Content="Не показывать, пока идёт созвон (занят микрофон)" />
+              <CheckBox x:Name="DndFullCheck" Content="Не показывать поверх полноэкранных программ" />
+              <TextBlock x:Name="DndFullHint" Classes="hint" Margin="28,0,0,0" IsVisible="False" />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- ===================== Утро и вечер ===================== -->
+      <TabItem Header="Утро и вечер">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Начало дня" />
+              <CheckBox x:Name="GreetingCheck">
+                <TextBlock TextWrapping="Wrap" Text="Приветствие в начале рабочего дня: погода, встречи, главное на сегодня" />
+              </CheckBox>
+              <Grid Classes="row" ColumnDefinitions="210,*"><TextBlock Text="Как к тебе обращаться" /><TextBox Grid.Column="1" x:Name="UserNameBox" Watermark="необязательно" /></Grid>
+
+              <TextBlock Classes="h" Text="Погода" />
+              <CheckBox x:Name="WeatherCheck" Content="Показывать погоду на сегодня" />
+              <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                <TextBox x:Name="CityBox" Watermark="Населённый пункт, например: Новосибирск" />
+                <Button Grid.Column="1" x:Name="CitySearchButton" Content="Найти" Margin="8,0,0,0" />
+              </Grid>
+              <ComboBox x:Name="CityResultsCombo" HorizontalAlignment="Stretch" Margin="0,6,0,0" IsVisible="False" />
+              <TextBlock x:Name="CityStatusText" Classes="hint" Margin="0,6,0,0" />
+              <TextBlock Classes="hint" Margin="0,6,0,0"
+                         Text="Погода — с open-meteo.com, без регистрации. Туда уходят только название города и его координаты. На большом перерыве программа подскажет, стоит ли выходить на улицу." />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Конец дня" />
+              <CheckBox x:Name="ReportCheck" Content="Отчёт в конце рабочего дня" />
+              <TextBlock Classes="hint" Margin="0,6,0,0"
+                         Text="Показывается, когда ты нажимаешь «Закончить» или день заканчивается по расписанию: время работы, перерывы, отдых для глаз, встречи, сравнение со средним за неделю." />
+              <TextBlock Classes="hint" Margin="0,6,0,0"
+                         Text="Если день закончился автоматически, а экран в это время заблокирован, отчёт не показывается — итоги просто сохраняются в статистику." />
+              <TextBlock Classes="hint" Margin="0,6,0,0"
+                         Text="В отчёте можно записать главное на завтра — оно появится в утреннем приветствии." />
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                <Button x:Name="PreviewGreetingButton" Content="Показать приветствие" />
+                <Button x:Name="PreviewReportButton" Content="Пример отчёта" />
+              </StackPanel>
             </StackPanel>
           </Grid>
         </ScrollViewer>

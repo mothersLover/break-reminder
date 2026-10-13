@@ -24,6 +24,8 @@ public sealed class AppController
     bool exiting, trayHintShown, blinkPhase;
     string calendarStatus = "";
     int calendarRequest; // номер последней загрузки — чтобы старый ответ не перезаписал новый
+    WeatherToday? weather;          // прогноз на сегодня (для приветствия и большого перерыва)
+    DateTime weatherAt = DateTime.MinValue;
 
     public AppController(IClassicDesktopStyleApplicationLifetime desktop, bool startHidden)
     {
@@ -35,8 +37,10 @@ public sealed class AppController
         engine = new WorkDayEngine(settings, platform, history, DateTime.Now);
         engine.ReminderDue += ShowReminder;
         engine.ReminderCancelled += CloseReminderWindow;
-        engine.Notification += ToastWindow.Show;
         engine.MeetingSoon += m => MeetingWindow.Show(m, settings, platform);
+        engine.EyeRestDue += () => EyeRestWindow.Show(settings.EyeSeconds);
+        engine.DayStarted += OnDayStarted;
+        engine.DayEnded += OnDayEnded;
 
         main = new MainWindow { Icon = Icons.Clock(Palette.Green) };
         main.MainClicked += OnMainClicked;
@@ -67,7 +71,12 @@ public sealed class AppController
         ApplyHotkey();
 
         // Выход из системы / Cmd+Q — сохранить день в историю.
-        desktop.ShutdownRequested += (_, _) => { if (!exiting) engine.EndDay(DateTime.Now); };
+        desktop.ShutdownRequested += (_, _) =>
+        {
+            if (exiting) return;
+            exiting = true; // система выключается — отчёт не показываем, просто сохраняем день
+            engine.EndDay(DateTime.Now);
+        };
 
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         timer.Tick += (_, _) =>
@@ -78,7 +87,11 @@ public sealed class AppController
         timer.Start();
 
         calendarTimer = new DispatcherTimer { Interval = TimeSpan.FromMinutes(10) };
-        calendarTimer.Tick += (_, _) => RefreshCalendar();
+        calendarTimer.Tick += (_, _) =>
+        {
+            RefreshCalendar();
+            if (engine.State != WorkState.Idle && DateTime.Now - weatherAt > TimeSpan.FromHours(3)) _ = RefreshWeather();
+        };
         calendarTimer.Start();
         RefreshCalendar();
 
@@ -114,6 +127,7 @@ public sealed class AppController
         string hint = engine.AutoStartHint(now);
         tray.ToolTipText = idle ? "Отдыхалка — " + (hint.Length > 0 ? hint.ToLowerInvariant() : "день не начат")
             : paused ? "Пауза · работа " + Format.Hms(engine.Worked)
+            : engine.OnBreak ? "Перерыв · осталось " + Format.Ms(engine.BreakUntil - now)
             : "Работа " + Format.Hms(engine.Worked) + " · перерыв через " + Format.Ms(engine.Remaining);
 
         miPause.IsEnabled = !idle;
@@ -146,7 +160,17 @@ public sealed class AppController
     void ShowReminder(bool isLong)
     {
         settings.ReloadTips();
-        reminder = new ReminderWindow(settings, engine.SinceLastBreak, false, isLong, platform, engine.ReminderNote);
+        // на большом перерыве — стоит ли выходить на улицу
+        string? weatherLine = isLong && settings.Weather && weather != null && weather.Date == DateTime.Today
+            ? Weather.BreakLine(weather, DateTime.Now) : null;
+        reminder = new ReminderWindow(settings, engine.SinceLastBreak, false, isLong, platform, engine.ReminderNote,
+            string.IsNullOrEmpty(weatherLine) ? null : weatherLine);
+        reminder.BreakRequested += () =>
+        {
+            var length = engine.BeginBreak(DateTime.Now);
+            Render();
+            return length;
+        };
         reminder.Answered += r =>
         {
             reminder = null;
@@ -165,7 +189,7 @@ public sealed class AppController
     async void OpenSettings()
     {
         ShowMain();
-        var w = new SettingsWindow(settings, platform, calendarStatus);
+        var w = new SettingsWindow(settings, platform, calendarStatus, engine.Meetings);
         var result = await w.ShowDialog<AppSettings?>(main);
         if (result == null) return;
         bool calendarChanged = result.CalendarOn != settings.CalendarOn || result.CalendarUrl != settings.CalendarUrl;
@@ -255,6 +279,54 @@ public sealed class AppController
             calendarStatus = $"Не удалось обновить ({DateTime.Now:HH:mm}): {e.Message}";
         }
         Render();
+    }
+
+    // ---------- утро и вечер ----------
+
+    async void OnDayStarted(bool auto)
+    {
+        if (!settings.Greeting)
+        {
+            if (auto) ToastWindow.Show("Рабочий день начат автоматически в " + DateTime.Now.ToString("HH:mm"));
+            return;
+        }
+        string dayInfo = $"Перерыв каждые {settings.IntervalMin} мин"
+                         + (settings.AutoDay ? $" · автозавершение в {DateTime.Today + settings.AutoEndTime:HH:mm}" : "")
+                         + (auto ? " · день начат автоматически" : "");
+        var w = new GreetingWindow(settings, engine.Meetings, DayPlan.Load(DateTime.Today), dayInfo);
+        w.Show();
+        if (settings.Weather)
+        {
+            await RefreshWeather();
+            w.SetWeather(weather, weatherError);
+        }
+    }
+
+    string? weatherError;
+
+    async Task RefreshWeather()
+    {
+        if (!settings.Weather) return;
+        var (w, error) = await WeatherLoader.LoadAsync(settings);
+        weatherAt = DateTime.Now;
+        weatherError = error;
+        if (w != null) weather = w;
+        if (settings.HasWeatherPlace && error == null) settings.Save(); // если город нашёлся по названию — запомнить координаты
+    }
+
+    void OnDayEnded(DayReport report, bool auto)
+    {
+        if (exiting) return;                                   // выход из программы / выключение системы
+        // Автоконец при заблокированном экране — никого нет, просто сохраняем в статистику (уже сохранено).
+        if (auto && platform.IsScreenLocked()) return;
+        if (!settings.DayReport)
+        {
+            if (auto) ToastWindow.Show("Рабочий день завершён: " + Format.Minutes(report.Worked) + " работы");
+            return;
+        }
+        var w = new DayReportWindow(report, history.LoadByDay(), settings);
+        w.StatsRequested += () => { w.Close(); OpenStats(); };
+        w.Show();
     }
 
     async void OpenStats()

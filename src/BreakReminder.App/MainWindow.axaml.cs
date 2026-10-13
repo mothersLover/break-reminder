@@ -44,13 +44,15 @@ public partial class MainWindow : Window
         string next;
         if (idle) next = e.AutoStartHint(now);
         else if (paused) next = "На паузе · до перерыва " + Format.Ms(e.Remaining);
+        else if (e.OnBreak) next = (e.ReminderIsLong ? "Большой перерыв" : "Перерыв") + " · осталось " + Format.Ms(e.BreakUntil - now);
         else if (e.ReminderOpen) next = e.ReminderIsLong ? "Большой перерыв!" : "Пора отдохнуть!";
         else if (e.DndReason != null) next = "Перерыв ждёт: " + e.DndReason;
         else if (e.Away) next = "Отдыхаешь…";
         else next = (e.NextIsLong ? "До большого перерыва  " : "До перерыва  ") + Format.Ms(e.Remaining);
         NextText.Text = next;
         NextText.Foreground = Palette.B(
-            e.ReminderOpen || e.DndReason != null ? Palette.Amber
+            e.OnBreak ? Palette.Green
+            : e.ReminderOpen || e.DndReason != null ? Palette.Amber
             : e.NextIsLong && !idle ? Palette.PurpleLight
             : idle ? Palette.Muted
             : Palette.Text);

@@ -52,6 +52,23 @@ public sealed class AppSettings
     public bool CalChainLong = true;         // после длинной серии встреч — большой перерыв
     public int CalChainMin = 120;
 
+    // ---- перерыв и глаза ----
+    public bool GuidedBreak = true;          // «Начать перерыв»: таймер + упражнения
+    public bool EyeRest = true;              // 20-20-20
+    public int EyeEveryMin = 20;
+    public int EyeSeconds = 20;
+
+    // ---- утро и вечер ----
+    public bool Greeting = true;             // приветствие в начале дня
+    public string UserName = "";             // как обращаться
+    public bool DayReport = true;            // отчёт в конце дня
+    public bool Weather = false;
+    public string WeatherCity = "";          // как показывать город
+    public double WeatherLat = double.NaN;   // координаты найденного города
+    public double WeatherLon = double.NaN;
+
+    public bool HasWeatherPlace => !double.IsNaN(WeatherLat) && !double.IsNaN(WeatherLon);
+
     // ---- обновления ----
     public bool UpdateOnStart = true;        // проверять при запуске
     public bool UpdateDaily = true;          // и раз в сутки, пока программа работает
@@ -119,6 +136,18 @@ public sealed class AppSettings
             s.CalMeetingAlertMin = Int(d, "CalMeetingAlertMin", s.CalMeetingAlertMin, 1, 60);
             s.CalChainLong = Bool(d, "CalChainLong", s.CalChainLong);
             s.CalChainMin = Int(d, "CalChainMin", s.CalChainMin, 30, 480);
+
+            s.GuidedBreak = Bool(d, "GuidedBreak", s.GuidedBreak);
+            s.EyeRest = Bool(d, "EyeRest", s.EyeRest);
+            s.EyeEveryMin = Int(d, "EyeEveryMin", s.EyeEveryMin, 5, 120);
+            s.EyeSeconds = Int(d, "EyeSeconds", s.EyeSeconds, 5, 120);
+            s.Greeting = Bool(d, "Greeting", s.Greeting);
+            s.UserName = Str(d, "UserName", s.UserName);
+            s.DayReport = Bool(d, "DayReport", s.DayReport);
+            s.Weather = Bool(d, "Weather", s.Weather);
+            s.WeatherCity = Str(d, "WeatherCity", s.WeatherCity);
+            s.WeatherLat = Dbl(d, "WeatherLat");
+            s.WeatherLon = Dbl(d, "WeatherLon");
 
             s.UpdateOnStart = Bool(d, "UpdateOnStart", s.UpdateOnStart);
             s.UpdateDaily = Bool(d, "UpdateDaily", s.UpdateDaily);
@@ -194,6 +223,17 @@ public sealed class AppSettings
             W("CalMeetingAlertMin", CalMeetingAlertMin);
             B("CalChainLong", CalChainLong);
             W("CalChainMin", CalChainMin);
+            B("GuidedBreak", GuidedBreak);
+            B("EyeRest", EyeRest);
+            W("EyeEveryMin", EyeEveryMin);
+            W("EyeSeconds", EyeSeconds);
+            B("Greeting", Greeting);
+            W("UserName", OneLine(UserName));
+            B("DayReport", DayReport);
+            B("Weather", Weather);
+            W("WeatherCity", OneLine(WeatherCity));
+            W("WeatherLat", HasWeatherPlace ? WeatherLat.ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
+            W("WeatherLon", HasWeatherPlace ? WeatherLon.ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
             B("UpdateOnStart", UpdateOnStart);
             B("UpdateDaily", UpdateDaily);
             W("UpdateSkipVersion", OneLine(UpdateSkipVersion));
@@ -215,6 +255,10 @@ public sealed class AppSettings
 
     static bool Bool(Dictionary<string, string> d, string key, bool def) =>
         d.TryGetValue(key, out var v) ? v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) : def;
+
+    static double Dbl(Dictionary<string, string> d, string key) =>
+        d.TryGetValue(key, out var v) && double.TryParse(v, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out double r) ? r : double.NaN;
 
     static string Str(Dictionary<string, string> d, string key, string def) =>
         d.TryGetValue(key, out var v) && v.Length > 0 ? v : def;

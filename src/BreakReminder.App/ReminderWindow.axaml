@@ -10,12 +10,19 @@
             HorizontalAlignment="Center" VerticalAlignment="Center">
       <Border Background="#2A2C38" Width="460" Padding="24,16,24,20">
         <StackPanel Spacing="4">
-          <TextBlock x:Name="TitleText" FontSize="27" FontWeight="Bold" Foreground="#ECEFF4" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock x:Name="TitleText" FontSize="27" FontWeight="Bold" Foreground="#ECEFF4"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="1" x:Name="CountdownText" FontSize="27" FontWeight="Light"
+                       Foreground="#ECEFF4" IsVisible="False" VerticalAlignment="Center" />
+          </Grid>
+          <ProgressBar x:Name="BreakProgress" Height="4" Minimum="0" Maximum="1" IsVisible="False"
+                       Foreground="#2ECC71" Margin="0,2,0,2" />
           <TextBlock x:Name="TipText" FontSize="16" Foreground="#ECEFF4" TextWrapping="Wrap"
-                     MaxLines="2" TextTrimming="CharacterEllipsis" Height="48" Margin="0,4,0,0" />
+                     MaxLines="3" TextTrimming="CharacterEllipsis" Height="66" Margin="0,4,0,0" />
           <TextBlock x:Name="InfoText" FontSize="12.5" Foreground="#8C92A5" Margin="0,4,0,14"
                      TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
-          <Grid ColumnDefinitions="*,10,*,10,*" Height="46">
+          <Grid x:Name="Buttons" ColumnDefinitions="*,10,*,10,*" Height="46">
             <Button Grid.Column="0" x:Name="DoneButton" Classes="flat" Background="#2ECC71" />
             <Button Grid.Column="2" x:Name="SnoozeButton" Classes="flat" Background="#484C5E" />
             <Button Grid.Column="4" x:Name="SkipButton" Classes="flat" Background="#484C5E" />
