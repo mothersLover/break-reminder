@@ -71,24 +71,42 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # Раздел «## [x.y.z]» из CHANGELOG.md -> описание релиза
+      - name: Release notes from CHANGELOG
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
+          awk -v ver="$v" '
+            index($0, "## [" ver "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on && /^\[[^]]+\]: / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "_Описание изменений — в CHANGELOG.md._" > notes.md
+          cat >> notes.md <<'EOF'
+
+          ## Скачать
+          | Система | Файл |
+          |---|---|
+          | Windows 10/11 | `BreakReminder-win-x64.zip` — распаковать и запустить `BreakReminder.exe` |
+          | Linux x64 | `BreakReminder-linux-x64.tar.gz` — распаковать и запустить `./install.sh` |
+          | macOS (Apple M1–M4) | `BreakReminder-osx-arm64.zip` |
+          | macOS (Intel) | `BreakReminder-osx-x64.zip` |
+
+          **macOS:** программа не подписана сертификатом Apple. При первом запуске — правый клик по приложению → «Открыть»,
+          или в терминале: `xattr -dr com.apple.quarantine /Applications/BreakReminder.app`
+          EOF
+          cat notes.md
+
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref_name }}
           name: Отдыхалка ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
           files: dist/*
-          generate_release_notes: true
-          body: |
-            ## Скачать
-            | Система | Файл |
-            |---|---|
-            | Windows 10/11 | `BreakReminder-win-x64.zip` — распаковать и запустить `BreakReminder.exe` |
-            | Linux x64 | `BreakReminder-linux-x64.tar.gz` — распаковать и запустить `./install.sh` |
-            | macOS (Apple M1–M4) | `BreakReminder-osx-arm64.zip` |
-            | macOS (Intel) | `BreakReminder-osx-x64.zip` |
-
-            **macOS:** программа не подписана сертификатом Apple. При первом запуске — правый клик по приложению → «Открыть»,
-            или в терминале: `xattr -dr com.apple.quarantine /Applications/BreakReminder.app`
+          body_path: notes.md

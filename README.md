@@ -1,7 +1,15 @@
 # Отдыхалка (Break Reminder)
 
+[![CI](https://github.com/mothersLover/break-reminder/actions/workflows/ci.yml/badge.svg)](https://github.com/mothersLover/break-reminder/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/mothersLover/break-reminder?label=%D0%B2%D0%B5%D1%80%D1%81%D0%B8%D1%8F)](https://github.com/mothersLover/break-reminder/releases/latest)
+![Platforms](https://img.shields.io/badge/Windows%20%7C%20Linux%20%7C%20macOS-555)
+![.NET 8](https://img.shields.io/badge/.NET-8-512BD4)
+
 Напоминалка о перерывах для **Windows, Linux и macOS**. Нажимаешь «Начать» в начале рабочего дня — программа считает
 время работы и регулярно предлагает отдохнуть. Уведомление можно отметить «Сделал», отложить или пропустить.
+
+**Последние изменения** — в [CHANGELOG.md](CHANGELOG.md). В 4.0.0 исправлено время встреч из календаря,
+заведённых в другом часовом поясе.
 
 ## Скачать
 

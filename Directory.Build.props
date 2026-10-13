@@ -4,7 +4,8 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>2.0.0</Version>
+    <!-- при сборке релиза перезаписывается версией из тега (release.yml) -->
+    <Version>4.0.0</Version>
     <Authors>Dmitriy Kuzmin</Authors>
     <Product>Отдыхалка (Break Reminder)</Product>
     <!-- Платформенный код сам проверяет ОС в рантайме -->
