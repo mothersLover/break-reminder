@@ -3,6 +3,44 @@ namespace BreakReminder.Core;
 public enum WorkState { Idle, Running, Paused }
 public enum ReminderResult { Done, Snooze, Skip }
 
+/// <summary>Состояние рабочего дня для перезапуска программы (session.json).</summary>
+public sealed class EngineSnapshot
+{
+    public DateTime SavedAt { get; set; }
+    public bool Paused { get; set; }
+    public DateTime PauseStart { get; set; }
+    public DateTime DayStart { get; set; }
+    public TimeSpan Worked { get; set; }
+    public TimeSpan Remaining { get; set; }
+    public TimeSpan SinceLastBreak { get; set; }
+    public int Done { get; set; }
+    public int Skipped { get; set; }
+    public int Snoozed { get; set; }
+    public int Cycle { get; set; }
+    public bool ForceLong { get; set; }
+
+    public static string FilePath => Path.Combine(Paths.DataDir, "session.json");
+
+    public void Save()
+    {
+        Directory.CreateDirectory(Paths.DataDir);
+        File.WriteAllText(FilePath, System.Text.Json.JsonSerializer.Serialize(this));
+    }
+
+    /// <summary>Прочитать и удалить. Старше maxAge — не восстанавливаем (значит, перезапуск не удался).</summary>
+    public static EngineSnapshot? TakeSaved(DateTime now, TimeSpan maxAge)
+    {
+        try
+        {
+            if (!File.Exists(FilePath)) return null;
+            var s = System.Text.Json.JsonSerializer.Deserialize<EngineSnapshot>(File.ReadAllText(FilePath));
+            File.Delete(FilePath);
+            return s != null && now - s.SavedAt <= maxAge && now >= s.SavedAt ? s : null;
+        }
+        catch { return null; }
+    }
+}
+
 /// <summary>
 /// Состояние рабочего дня: время работы, отсчёт до перерыва, большие перерывы, «не беспокоить»,
 /// учёт сна/простоя/паузы как отдыха, автоматическое начало и конец дня.
@@ -430,6 +468,44 @@ public sealed class WorkDayEngine
         StatusText = $"День завершён автоматически в {endAt:HH:mm}: {Format.Minutes(Worked)} работы\nперерывов {Done}, пропущено {Skipped}";
         Notification?.Invoke("Рабочий день завершён: " + Format.Minutes(Worked) + " работы");
         return true;
+    }
+
+    // ---------- перезапуск без потери дня (обновление программы) ----------
+
+    /// <summary>Состояние идущего дня; null, если день не начат.</summary>
+    public EngineSnapshot? Snapshot(DateTime now) => State == WorkState.Idle ? null : new EngineSnapshot
+    {
+        SavedAt = now,
+        Paused = State == WorkState.Paused,
+        PauseStart = pauseStart,
+        DayStart = DayStart,
+        Worked = Worked,
+        Remaining = ReminderOpen ? TimeSpan.Zero : Remaining, // открытое напоминание покажется снова
+        SinceLastBreak = SinceLastBreak,
+        Done = Done,
+        Skipped = Skipped,
+        Snoozed = Snoozed,
+        Cycle = Cycle,
+        ForceLong = forceLong
+    };
+
+    /// <summary>Продолжить день после перезапуска. Время перезапуска засчитывается как работа.</summary>
+    public void Restore(EngineSnapshot s, string message)
+    {
+        State = s.Paused ? WorkState.Paused : WorkState.Running;
+        pauseStart = s.PauseStart;
+        DayStart = lastDayStart = s.DayStart;
+        Worked = s.Worked;
+        Remaining = s.Remaining;
+        SinceLastBreak = s.SinceLastBreak;
+        Done = s.Done;
+        Skipped = s.Skipped;
+        Snoozed = s.Snoozed;
+        Cycle = s.Cycle;
+        forceLong = s.ForceLong;
+        lastTick = s.SavedAt;
+        ReminderOpen = false;
+        StatusText = message;
     }
 
     /// <summary>Подсказка для главного окна, пока день не начат.</summary>

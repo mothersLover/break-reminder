@@ -170,6 +170,37 @@
         </ScrollViewer>
       </TabItem>
 
+      <!-- ===================== Обновления ===================== -->
+      <TabItem Header="Обновления">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Версия" />
+              <TextBlock x:Name="CurrentVersionText" FontSize="15" />
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
+                <Button x:Name="CheckUpdateButton" Content="Проверить сейчас" />
+                <Button x:Name="InstallUpdateButton" Content="Установить…" Classes="accent" IsVisible="False" />
+              </StackPanel>
+              <TextBlock x:Name="UpdateStatusText" Classes="hint" Margin="0,8,0,0" />
+
+              <TextBlock Classes="h" Text="Автоматически" />
+              <CheckBox x:Name="UpdateOnStartCheck" Content="Проверять при запуске и предлагать обновиться" />
+              <CheckBox x:Name="UpdateDailyCheck" Content="Проверять раз в сутки, пока программа работает" />
+              <TextBlock x:Name="SkippedVersionText" Classes="hint" Margin="28,4,0,0" />
+              <Button x:Name="UnskipButton" Content="Снова предлагать эту версию" Margin="28,4,0,0" IsVisible="False" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Как это работает" />
+              <TextBlock x:Name="UpdateHowText" Classes="hint" />
+              <TextBlock Classes="hint" Margin="0,8,0,0"
+                         Text="Новые версии берутся со страницы релизов проекта на GitHub. Скачанный файл сверяется с опубликованной контрольной суммой SHA-256: повреждённое или подменённое обновление не установится." />
+              <Button x:Name="OpenReleasesButton" Content="Страница релизов" Margin="0,10,0,0" />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
       <!-- ===================== Тексты уведомлений ===================== -->
       <TabItem Header="Тексты уведомлений">
         <ScrollViewer>

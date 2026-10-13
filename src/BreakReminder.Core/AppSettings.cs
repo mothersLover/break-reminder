@@ -52,6 +52,11 @@ public sealed class AppSettings
     public bool CalChainLong = true;         // после длинной серии встреч — большой перерыв
     public int CalChainMin = 120;
 
+    // ---- обновления ----
+    public bool UpdateOnStart = true;        // проверять при запуске
+    public bool UpdateDaily = true;          // и раз в сутки, пока программа работает
+    public string UpdateSkipVersion = "";    // «Пропустить эту версию»
+
     // ---- тексты (советы хранятся в tips.txt / tips_long.txt) ----
     public string TitleShort = Texts.TitleShort;
     public string TitleLong = Texts.TitleLong;
@@ -114,6 +119,10 @@ public sealed class AppSettings
             s.CalMeetingAlertMin = Int(d, "CalMeetingAlertMin", s.CalMeetingAlertMin, 1, 60);
             s.CalChainLong = Bool(d, "CalChainLong", s.CalChainLong);
             s.CalChainMin = Int(d, "CalChainMin", s.CalChainMin, 30, 480);
+
+            s.UpdateOnStart = Bool(d, "UpdateOnStart", s.UpdateOnStart);
+            s.UpdateDaily = Bool(d, "UpdateDaily", s.UpdateDaily);
+            s.UpdateSkipVersion = Str(d, "UpdateSkipVersion", s.UpdateSkipVersion);
 
             if (d.TryGetValue("CalendarUrl", out var v)) s.CalendarUrl = v;
             if (d.TryGetValue("Sound", out v)) s.Sound = SoundCatalog.Normalize(v);
@@ -185,6 +194,9 @@ public sealed class AppSettings
             W("CalMeetingAlertMin", CalMeetingAlertMin);
             B("CalChainLong", CalChainLong);
             W("CalChainMin", CalChainMin);
+            B("UpdateOnStart", UpdateOnStart);
+            B("UpdateDaily", UpdateDaily);
+            W("UpdateSkipVersion", OneLine(UpdateSkipVersion));
             W("TitleShort", OneLine(TitleShort));
             W("TitleLong", OneLine(TitleLong));
             W("BtnDone", OneLine(BtnDone));

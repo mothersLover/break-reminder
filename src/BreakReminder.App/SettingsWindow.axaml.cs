@@ -13,6 +13,12 @@ public partial class SettingsWindow : Window
 
     public bool AutostartChecked => AutostartCheck.IsChecked == true;
 
+    /// <summary>Нажали «Установить…» — после закрытия настроек показать окно обновления.</summary>
+    public ReleaseInfo? InstallRequested { get; private set; }
+
+    ReleaseInfo? foundRelease;
+    string skipVersion;
+
     public SettingsWindow() : this(new AppSettings(), null!, "") { }
 
     public SettingsWindow(AppSettings s, IPlatform platform, string calendarStatus)
@@ -90,6 +96,24 @@ public partial class SettingsWindow : Window
         CalChainCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
         CalendarTestButton.Click += async (_, _) => await TestCalendar();
 
+        // ---- Обновления ----
+        skipVersion = s.UpdateSkipVersion;
+        CurrentVersionText.Text = $"Установлена версия {UpdateChecker.Current}";
+        UpdateOnStartCheck.IsChecked = s.UpdateOnStart;
+        UpdateDailyCheck.IsChecked = s.UpdateDaily;
+        UpdateHowText.Text = Updater.CanSelfUpdate
+            ? "Если есть новая версия, программа предложит её установить: скачает, заменит себя и перезапустится. Идущий рабочий день не прервётся."
+            : "Если есть новая версия, программа предложит её скачать и откроет страницу загрузки — замени приложение новым.";
+        ShowSkipped();
+        UnskipButton.Click += (_, _) => { skipVersion = ""; ShowSkipped(); };
+        CheckUpdateButton.Click += async (_, _) => await CheckUpdate();
+        InstallUpdateButton.Click += (_, _) =>
+        {
+            InstallRequested = foundRelease;
+            Close(Collect());
+        };
+        OpenReleasesButton.Click += (_, _) => platform?.OpenPath($"https://github.com/{UpdateChecker.Repo}/releases");
+
         // ---- Тексты ----
         FillTexts(s.TitleShort, s.TitleLong, s.TipsShort, s.TipsLong, s.BtnDone, s.BtnSnooze, s.BtnSkip);
 
@@ -161,6 +185,42 @@ public partial class SettingsWindow : Window
         customPath = path;
         SoundCombo.SelectedIndex = Array.IndexOf(SoundCatalog.Keys, "custom");
         UpdateEnabled();
+    }
+
+    void ShowSkipped()
+    {
+        bool has = !string.IsNullOrEmpty(skipVersion);
+        SkippedVersionText.Text = has ? $"Версию {skipVersion} ты пропустил — о ней не напоминаю." : "";
+        SkippedVersionText.IsVisible = UnskipButton.IsVisible = has;
+    }
+
+    async Task CheckUpdate()
+    {
+        CheckUpdateButton.IsEnabled = false;
+        InstallUpdateButton.IsVisible = false;
+        UpdateStatusText.Text = "Проверяю…";
+        try
+        {
+            var r = await UpdateChecker.GetLatestAsync();
+            if (r == null || r.Version <= UpdateChecker.Current)
+            {
+                UpdateStatusText.Text = $"У тебя последняя версия ({UpdateChecker.Current}).";
+            }
+            else
+            {
+                foundRelease = r;
+                UpdateStatusText.Text = $"Доступна версия {r.Version}.";
+                InstallUpdateButton.IsVisible = true;
+            }
+        }
+        catch (Exception e)
+        {
+            UpdateStatusText.Text = "Не получилось проверить: " + e.Message;
+        }
+        finally
+        {
+            CheckUpdateButton.IsEnabled = true;
+        }
     }
 
     async Task TestCalendar()
@@ -254,6 +314,10 @@ public partial class SettingsWindow : Window
         s.CalMeetingAlertMin = N(CalAlertNum, s.CalMeetingAlertMin);
         s.CalChainLong = CalChainCheck.IsChecked == true;
         s.CalChainMin = N(CalChainNum, s.CalChainMin);
+
+        s.UpdateOnStart = UpdateOnStartCheck.IsChecked == true;
+        s.UpdateDaily = UpdateDailyCheck.IsChecked == true;
+        s.UpdateSkipVersion = skipVersion;
 
         s.TitleShort = Or(TitleShortBox.Text, Texts.TitleShort);
         s.TitleLong = Or(TitleLongBox.Text, Texts.TitleLong);

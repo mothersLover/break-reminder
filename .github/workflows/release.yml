@@ -27,6 +27,9 @@ jobs:
           - { os: macos-latest,   rid: osx-x64 }
     steps:
       - uses: actions/checkout@v4
+        with:
+          # ручной запуск собирает код из тега этой версии, а не из текущей ветки
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
@@ -71,11 +74,16 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # здесь нужен только CHANGELOG.md: при ручном запуске — свежий из main (описание старой версии можно дописать позже)
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+
+      # Контрольные суммы: программа сверяет с ними скачанное обновление
+      - name: Checksums
+        run: cd dist && sha256sum BreakReminder-* > SHA256SUMS.txt && cat SHA256SUMS.txt
 
       # Раздел «## [x.y.z]» из CHANGELOG.md -> описание релиза
       - name: Release notes from CHANGELOG

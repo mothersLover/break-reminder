@@ -17,9 +17,10 @@ public sealed class AppController
     readonly MainWindow main;
     readonly TrayIcon tray;
     readonly NativeMenuItem miPause, miMain;
-    readonly DispatcherTimer timer, calendarTimer;
+    readonly DispatcherTimer timer, calendarTimer, updateTimer;
     AppSettings settings;
     ReminderWindow? reminder;
+    UpdateWindow? updateWindow;
     bool exiting, trayHintShown, blinkPhase;
     string calendarStatus = "";
     int calendarRequest; // номер последней загрузки — чтобы старый ответ не перезаписал новый
@@ -66,7 +67,7 @@ public sealed class AppController
         ApplyHotkey();
 
         // Выход из системы / Cmd+Q — сохранить день в историю.
-        desktop.ShutdownRequested += (_, _) => engine.EndDay(DateTime.Now);
+        desktop.ShutdownRequested += (_, _) => { if (!exiting) engine.EndDay(DateTime.Now); };
 
         timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
         timer.Tick += (_, _) =>
@@ -80,6 +81,18 @@ public sealed class AppController
         calendarTimer.Tick += (_, _) => RefreshCalendar();
         calendarTimer.Start();
         RefreshCalendar();
+
+        // После обновления — продолжить рабочий день с того же места.
+        if (EngineSnapshot.TakeSaved(DateTime.Now, TimeSpan.FromMinutes(30)) is { } snap)
+            engine.Restore(snap, $"Обновлено до версии {UpdateChecker.Current} — рабочий день продолжается");
+        if (Program.AfterUpdate) ToastWindow.Show($"Программа обновлена до версии {UpdateChecker.Current}");
+
+        // Проверка обновлений: через несколько секунд после запуска и раз в сутки.
+        if (settings.UpdateOnStart && !Program.AfterUpdate)
+            DispatcherTimer.RunOnce(() => CheckForUpdates(), TimeSpan.FromSeconds(5));
+        updateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(24) };
+        updateTimer.Tick += (_, _) => { if (settings.UpdateDaily) CheckForUpdates(); };
+        updateTimer.Start();
 
         // Следующие запуски программы передают сюда команды ("show", "toggle-pause").
         SingleInstance.Listen(cmd => Dispatcher.UIThread.Post(() => HandleCommand(cmd)));
@@ -163,6 +176,58 @@ public sealed class AppController
         ApplyHotkey();
         if (calendarChanged) RefreshCalendar();
         Render();
+        if (w.InstallRequested is { } release) ShowUpdateWindow(release);
+    }
+
+    // ---------- обновления ----------
+
+    /// <summary>Тихая проверка: при ошибке сети молчим, пропущенную версию не предлагаем.</summary>
+    async void CheckForUpdates()
+    {
+        try
+        {
+            var r = await UpdateChecker.GetLatestAsync();
+            if (r == null || r.Version <= UpdateChecker.Current) return;
+            if (r.Version.ToString() == settings.UpdateSkipVersion) return;
+            ShowUpdateWindow(r);
+        }
+        catch { /* нет сети — проверим в следующий раз */ }
+    }
+
+    void ShowUpdateWindow(ReleaseInfo r)
+    {
+        if (updateWindow != null)
+        {
+            updateWindow.Activate();
+            return;
+        }
+        updateWindow = new UpdateWindow(r, UpdateChecker.Current, engine.State != WorkState.Idle, platform);
+        updateWindow.Ready += RestartForUpdate;
+        updateWindow.SkipRequested += () =>
+        {
+            settings.UpdateSkipVersion = r.Version.ToString();
+            settings.Save();
+        };
+        updateWindow.Closed += (_, _) => updateWindow = null;
+        updateWindow.Show();
+    }
+
+    /// <summary>Новая версия скачана: сохранить день, подменить файл, запустить новую версию и выйти.</summary>
+    void RestartForUpdate(string staged)
+    {
+        try
+        {
+            engine.Snapshot(DateTime.Now)?.Save();
+            Updater.ApplyAndRestart(staged, startHidden: !main.IsVisible);
+        }
+        catch (Exception e)
+        {
+            try { File.Delete(EngineSnapshot.FilePath); } catch { }
+            updateWindow?.Close();
+            ToastWindow.Show("Не удалось установить обновление: " + e.Message);
+            return;
+        }
+        Exit(endDay: false); // день продолжит новая версия
     }
 
     /// <summary>Загрузить встречи по ссылке (в фоне); при ошибке оставляем прежние.</summary>
@@ -263,12 +328,14 @@ public sealed class AppController
         Exit();
     }
 
-    void Exit()
+    void Exit(bool endDay = true)
     {
         exiting = true;
         timer.Stop();
         calendarTimer.Stop();
-        engine.EndDay(DateTime.Now);
+        updateTimer.Stop();
+        updateWindow?.Close();
+        if (endDay) engine.EndDay(DateTime.Now);
         CloseReminderWindow();
         tray.IsVisible = false;
         tray.Dispose();

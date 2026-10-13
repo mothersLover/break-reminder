@@ -8,7 +8,12 @@ namespace BreakReminder.App;
 /// </summary>
 sealed class SingleInstance : IDisposable
 {
-    static string Id => "BreakReminder-" + Environment.UserName;
+    // Своя папка данных (BREAKREMINDER_DATA_DIR, разработка/тесты) — отдельная «одна копия»,
+    // чтобы тестовый запуск не трогал обычную программу.
+    static string Id => "BreakReminder-" + Environment.UserName
+        + (Environment.GetEnvironmentVariable("BREAKREMINDER_DATA_DIR") is { Length: > 0 } dir
+            ? "-" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(dir)))[..12]
+            : "");
 
     readonly Mutex? mutex;
     public bool IsFirst { get; }
