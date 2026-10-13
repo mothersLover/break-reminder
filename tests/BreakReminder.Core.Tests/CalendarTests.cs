@@ -58,6 +58,50 @@ public class IcsParserTests
         Assert.Equal(Utc(12, 7, 15), standup.End);
     }
 
+    // Как у Яндекса: встречи заведены в разных поясах (TZID), с вложенным VTIMEZONE.
+    const string ZonedIcs = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        PRODID:-//test//EN
+        BEGIN:VTIMEZONE
+        TZID:Europe/Moscow
+        BEGIN:STANDARD
+        TZOFFSETFROM:+0300
+        TZOFFSETTO:+0300
+        DTSTART:20141026T020000
+        END:STANDARD
+        END:VTIMEZONE
+        BEGIN:VEVENT
+        UID:msk
+        DTSTART;TZID=Europe/Moscow:20261012T080000
+        DTEND;TZID=Europe/Moscow:20261012T084500
+        RRULE:FREQ=WEEKLY;COUNT=3
+        SUMMARY:По Москве
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:vvo
+        DTSTART;TZID=Asia/Vladivostok:20261012T160000
+        DTEND;TZID=Asia/Vladivostok:20261012T164500
+        SUMMARY:По Владивостоку
+        END:VEVENT
+        END:VCALENDAR
+        """;
+
+    static DateTime FromZone(string tz, int h, int m) => TimeZoneInfo.ConvertTime(
+        new DateTime(2026, 10, 12, h, m, 0), TimeZoneInfo.FindSystemTimeZoneById(tz), TimeZoneInfo.Local);
+
+    [Fact]
+    public void Times_in_other_timezones_are_converted_to_local()
+    {
+        var list = IcsParser.Parse(ZonedIcs, new DateTime(2026, 10, 11), new DateTime(2026, 10, 14));
+        var msk = list.Single(m => m.Title == "По Москве");          // повторяющаяся — тут и терялся пояс
+        var vvo = list.Single(m => m.Title == "По Владивостоку");
+        Assert.Equal(FromZone("Europe/Moscow", 8, 0), msk.Start);
+        Assert.Equal(FromZone("Europe/Moscow", 8, 45), msk.End);
+        Assert.Equal(FromZone("Asia/Vladivostok", 16, 0), vvo.Start);
+        Assert.Equal(FromZone("Asia/Vladivostok", 16, 45), vvo.End);
+    }
+
     [Fact]
     public void Webcal_is_normalized()
     {
