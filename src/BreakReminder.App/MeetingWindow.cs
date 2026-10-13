@@ -38,8 +38,31 @@ public sealed class MeetingWindow : Window
         Opacity = 0;
 
         int minutes = Math.Max(1, (int)Math.Round((m.Start - DateTime.Now).TotalMinutes));
-        var ok = new Button { Content = "Понял", Classes = { "flat" }, Background = Palette.B(Palette.Blue), Height = 40, Margin = new Thickness(0, 12, 0, 0) };
+        bool hasLink = m.JoinUrl != null;
+        var ok = new Button { Content = "Понял", Classes = { "flat" }, Background = Palette.B(hasLink ? Palette.Gray : Palette.Blue) };
         ok.Click += (_, _) => Close();
+
+        // Есть ссылка на звонок — «Подключиться» (главная) + «Понял»; нет — только «Понял».
+        var buttons = new Grid { Height = 40, Margin = new Thickness(0, 12, 0, 0) };
+        if (hasLink)
+        {
+            var join = new Button { Content = "Подключиться", Classes = { "flat" }, Background = Palette.B(Palette.Green) };
+            join.Click += (_, _) =>
+            {
+                platform.OpenPath(m.JoinUrl!);
+                Close();
+            };
+            buttons.ColumnDefinitions = new ColumnDefinitions("2*,10,*");
+            Grid.SetColumn(join, 0);
+            Grid.SetColumn(ok, 2);
+            buttons.Children.Add(join);
+            buttons.Children.Add(ok);
+            ToolTip.SetTip(join, m.JoinUrl);
+        }
+        else
+        {
+            buttons.Children.Add(ok);
+        }
 
         Content = new Border
         {
@@ -61,8 +84,12 @@ public sealed class MeetingWindow : Window
                             Text = m.Title, FontSize = 21, FontWeight = FontWeight.Bold, Foreground = Palette.B(Palette.Text),
                             TextWrapping = TextWrapping.Wrap, MaxLines = 2, TextTrimming = TextTrimming.CharacterEllipsis
                         },
-                        new TextBlock { Text = m.TimeRange, FontSize = 13, Foreground = Palette.B(Palette.Muted) },
-                        ok
+                        new TextBlock
+                        {
+                            Text = m.TimeRange + (hasLink ? "  ·  " + MeetingLinks.ServiceName(m.JoinUrl!) : ""),
+                            FontSize = 13, Foreground = Palette.B(Palette.Muted)
+                        },
+                        buttons
                     }
                 }
             }

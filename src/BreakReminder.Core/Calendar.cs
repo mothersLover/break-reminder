@@ -5,8 +5,8 @@ using IcalEvent = Ical.Net.CalendarComponents.CalendarEvent;
 
 namespace BreakReminder.Core;
 
-/// <summary>Встреча из календаря (одно вхождение, уже в местном времени).</summary>
-public sealed record Meeting(DateTime Start, DateTime End, string Title)
+/// <summary>Встреча из календаря (одно вхождение, уже в местном времени). JoinUrl — ссылка на звонок, если нашлась.</summary>
+public sealed record Meeting(DateTime Start, DateTime End, string Title, string? JoinUrl = null)
 {
     public string Key => $"{Start:O}|{Title}";
     public string TimeRange => $"{Start:HH:mm}–{End:HH:mm}";
@@ -33,7 +33,8 @@ public static class IcsParser
                 : start + (occ.Period.Duration > TimeSpan.Zero ? occ.Period.Duration : ev.Duration);
             if (end <= start) continue;
             if (end <= from || start >= to) continue;
-            result.Add(new Meeting(start, end, string.IsNullOrWhiteSpace(ev.Summary) ? "Встреча" : ev.Summary.Trim()));
+            result.Add(new Meeting(start, end, string.IsNullOrWhiteSpace(ev.Summary) ? "Встреча" : ev.Summary.Trim(),
+                MeetingLinks.Find(ev)));
         }
         result.Sort((a, b) => a.Start.CompareTo(b.Start));
         return result.DistinctBy(m => m.Key).ToList();
