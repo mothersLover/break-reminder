@@ -122,7 +122,8 @@ public sealed class GreetingWindow : Window
 {
     readonly StackPanel weatherPanel = new() { Spacing = 3 };
 
-    public GreetingWindow(AppSettings s, IReadOnlyList<Meeting> meetings, string? plan, string dayInfo)
+    public GreetingWindow(AppSettings s, IReadOnlyList<Meeting> meetings, string? plan, string dayInfo,
+        IReadOnlyList<LocalTask>? tasks = null)
     {
         var now = DateTime.Now;
         Title = "Доброе утро";
@@ -183,6 +184,15 @@ public sealed class GreetingWindow : Window
 
         if (!string.IsNullOrWhiteSpace(plan))
             body.Children.Add(Card.Section("Главное на сегодня", Card.Text(plan, 15, Palette.Text, FontWeight.SemiBold)));
+
+        if (tasks is { Count: > 0 })
+        {
+            var lines = new StackPanel { Spacing = 2 };
+            foreach (var t in tasks.Take(4))
+                lines.Children.Add(Card.Text((t.At is { } at ? at.ToString("HH:mm") + "  " : "•  ") + t.Title, 14, Palette.Text));
+            if (tasks.Count > 4) lines.Children.Add(Card.Text($"…и ещё {tasks.Count - 4}", 13, Palette.Muted));
+            body.Children.Add(Card.Section("Задачи", lines));
+        }
 
         body.Children.Add(Card.Text(dayInfo, 12.5, Palette.Muted));
 

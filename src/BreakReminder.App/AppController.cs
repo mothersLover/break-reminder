@@ -13,6 +13,8 @@ public sealed class AppController
     readonly IClassicDesktopStyleApplicationLifetime desktop;
     readonly IPlatform platform;
     readonly FileHistoryStore history = new();
+    readonly TaskStore tasks = new();
+    AgendaWindow? agenda;
     readonly WorkDayEngine engine;
     readonly MainWindow main;
     readonly TrayIcon tray;
@@ -41,12 +43,16 @@ public sealed class AppController
         engine.EyeRestDue += () => EyeRestWindow.Show(settings.EyeSeconds);
         engine.DayStarted += OnDayStarted;
         engine.DayEnded += OnDayEnded;
+        engine.Tasks = tasks.All;
+        engine.TaskDue += t => TaskAlertWindow.Show(t, settings, platform, tasks);
+        tasks.Changed += () => Render();
 
         main = new MainWindow { Icon = Icons.Clock(Palette.Green) };
         main.MainClicked += OnMainClicked;
         main.PauseClicked += TogglePause;
         main.StatsClicked += OpenStats;
         main.SettingsClicked += OpenSettings;
+        main.AgendaClicked += OpenAgenda;
         main.Closing += OnMainClosing;
 
         // ---- трей ----
@@ -57,11 +63,14 @@ public sealed class AppController
         miPause.Click += (_, _) => TogglePause();
         miMain = new NativeMenuItem("Начать день");
         miMain.Click += (_, _) => OnMainClicked();
+        var miAgenda = new NativeMenuItem("Задачи на сегодня");
+        miAgenda.Click += (_, _) => OpenAgenda();
         var miExit = new NativeMenuItem("Выход");
         miExit.Click += async (_, _) => await ExitWithConfirm();
         menu.Items.Add(miShow);
         menu.Items.Add(miPause);
         menu.Items.Add(miMain);
+        menu.Items.Add(miAgenda);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(miExit);
         tray = new TrayIcon { Icon = Icons.Clock(Palette.Gray), ToolTipText = "Отдыхалка", Menu = menu, IsVisible = true };
@@ -121,6 +130,9 @@ public sealed class AppController
         blinkPhase = !blinkPhase;
         var now = DateTime.Now;
         main.Render(engine, now, blinkPhase);
+        int upcoming = (settings.CalendarOn ? engine.Meetings.Count(m => m.Start.Date == now.Date && m.End > now) : 0)
+                       + tasks.ForDay(now).Count(t => !t.Done);
+        main.SetAgendaCount(upcoming);
 
         bool idle = engine.State == WorkState.Idle, paused = engine.State == WorkState.Paused;
         tray.Icon = Icons.Clock(idle ? Palette.Gray : paused ? Palette.Amber : engine.ReminderOpen ? Palette.Red : Palette.Green);
@@ -272,6 +284,7 @@ public sealed class AppController
             engine.Meetings = meetings;
             int today = meetings.Count(m => m.Start.Date == now.Date);
             calendarStatus = $"Обновлено в {DateTime.Now:HH:mm}. Встреч сегодня: {today}.";
+            agenda?.Rebuild();
         }
         catch (Exception e)
         {
@@ -279,6 +292,20 @@ public sealed class AppController
             calendarStatus = $"Не удалось обновить ({DateTime.Now:HH:mm}): {e.Message}";
         }
         Render();
+    }
+
+    // ---------- задачи на сегодня ----------
+
+    void OpenAgenda()
+    {
+        if (agenda != null)
+        {
+            agenda.Activate();
+            return;
+        }
+        agenda = new AgendaWindow(tasks, () => engine.Meetings, settings.CalendarOn, () => calendarStatus, platform);
+        agenda.Closed += (_, _) => agenda = null;
+        agenda.Show();
     }
 
     // ---------- утро и вечер ----------
@@ -293,7 +320,8 @@ public sealed class AppController
         string dayInfo = $"Перерыв каждые {settings.IntervalMin} мин"
                          + (settings.AutoDay ? $" · автозавершение в {DateTime.Today + settings.AutoEndTime:HH:mm}" : "")
                          + (auto ? " · день начат автоматически" : "");
-        var w = new GreetingWindow(settings, engine.Meetings, DayPlan.Load(DateTime.Today), dayInfo);
+        var w = new GreetingWindow(settings, engine.Meetings, DayPlan.Load(DateTime.Today), dayInfo,
+            tasks.ForDay(DateTime.Today).Where(t => !t.Done).ToList());
         w.Show();
         if (settings.Weather)
         {

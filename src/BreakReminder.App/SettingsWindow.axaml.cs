@@ -117,6 +117,9 @@ public partial class SettingsWindow : Window
         GreetingCheck.IsChecked = s.Greeting;
         UserNameBox.Text = s.UserName;
         ReportCheck.IsChecked = s.DayReport;
+        TaskAlertCheck.IsChecked = s.TaskAlerts;
+        TaskAlertNum.Value = s.TaskAlertMin;
+        TaskAlertCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
         WeatherCheck.IsChecked = s.Weather;
         CityBox.Text = s.WeatherCity;
         CityStatusText.Text = s.HasWeatherPlace ? "Выбрано: " + s.WeatherCity : "";
@@ -349,6 +352,7 @@ public partial class SettingsWindow : Window
     void UpdateEnabled()
     {
         EyeEveryNum.IsEnabled = EyeSecondsNum.IsEnabled = EyeCheck.IsChecked == true;
+        TaskAlertNum.IsEnabled = TaskAlertCheck.IsChecked == true;
         CityBox.IsEnabled = CitySearchButton.IsEnabled = CityResultsCombo.IsEnabled = WeatherCheck.IsChecked == true;
         bool cal = CalendarCheck.IsChecked == true;
         CalWaitCheck.IsEnabled = CalBeforeCheck.IsEnabled = CalAlertCheck.IsEnabled = CalChainCheck.IsEnabled = cal;
@@ -417,6 +421,8 @@ public partial class SettingsWindow : Window
         s.Greeting = GreetingCheck.IsChecked == true;
         s.UserName = (UserNameBox.Text ?? "").Trim();
         s.DayReport = ReportCheck.IsChecked == true;
+        s.TaskAlerts = TaskAlertCheck.IsChecked == true;
+        s.TaskAlertMin = N(TaskAlertNum, s.TaskAlertMin);
         s.Weather = WeatherCheck.IsChecked == true;
         s.WeatherCity = (CityBox.Text ?? "").Trim();
         s.WeatherLat = placeLat;

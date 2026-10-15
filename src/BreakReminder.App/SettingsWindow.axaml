@@ -141,6 +141,15 @@
               <TextBlock x:Name="CityStatusText" Classes="hint" Margin="0,6,0,0" />
               <TextBlock Classes="hint" Margin="0,6,0,0"
                          Text="Погода — с open-meteo.com, без регистрации. Туда уходят только название города и его координаты. На большом перерыве программа подскажет, стоит ли выходить на улицу." />
+
+              <TextBlock Classes="h" Text="Свои задачи" />
+              <Grid ColumnDefinitions="*,Auto,Auto">
+                <CheckBox x:Name="TaskAlertCheck" Content="Напоминать о задачах со временем за" />
+                <NumericUpDown Grid.Column="1" x:Name="TaskAlertNum" Minimum="0" Maximum="120" Width="120" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="мин" Margin="10,0,0,0" VerticalAlignment="Center" />
+              </Grid>
+              <TextBlock Classes="hint" Margin="0,4,0,0"
+                         Text="0 — ровно во время. Задачи добавляются по ссылке «Все задачи на сегодня» на главном экране; напоминания приходят, даже если рабочий день не начат." />
             </StackPanel>
 
             <StackPanel Grid.Column="2">

@@ -170,6 +170,12 @@ public sealed class WorkDayEngine
     public event Action? EyeRestDue;
     /// <summary>Скоро встреча — показать напоминание о ней.</summary>
     public event Action<Meeting>? MeetingSoon;
+    /// <summary>Пора напомнить о своей задаче.</summary>
+    public event Action<LocalTask>? TaskDue;
+
+    /// <summary>Свои задачи (задаёт приложение).</summary>
+    public IReadOnlyList<LocalTask> Tasks { get; set; } = Array.Empty<LocalTask>();
+    readonly HashSet<string> alertedTasks = new();
 
     /// <summary>Сколько раз за день был отдых для глаз.</summary>
     public int EyeRests { get; private set; }
@@ -188,6 +194,7 @@ public sealed class WorkDayEngine
         lastTick = now;
         if (delta < TimeSpan.Zero) delta = TimeSpan.Zero; // перевели часы назад
 
+        CheckTaskAlerts(now);
         if (CheckAutoDay(now, prevTick)) return;
         if (State != WorkState.Idle) CheckMeetingAlerts(now);
         if (State != WorkState.Running) return;
@@ -412,6 +419,22 @@ public sealed class WorkDayEngine
     }
 
     // ---------- календарь ----------
+
+    /// <summary>
+    /// Свои задачи со временем: за N минут (или ровно во время) — событие TaskDue, один раз на задачу.
+    /// Работает и вне рабочего дня. Давно прошедшие (больше минуты) не вспоминаем — например, после запуска программы.
+    /// </summary>
+    void CheckTaskAlerts(DateTime now)
+    {
+        if (!settings.TaskAlerts) return;
+        var lead = TimeSpan.FromMinutes(settings.TaskAlertMin);
+        foreach (var t in Tasks)
+        {
+            if (t.Done || t.At is not { } at) continue;
+            if (now < at - lead || now > at + TimeSpan.FromMinutes(1)) continue;
+            if (alertedTasks.Add(t.AlertKey)) TaskDue?.Invoke(t);
+        }
+    }
 
     /// <summary>За N минут до встречи — событие MeetingSoon (один раз на встречу).</summary>
     void CheckMeetingAlerts(DateTime now)

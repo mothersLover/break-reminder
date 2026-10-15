@@ -58,7 +58,7 @@
         <Panel>
           <Border Background="{TemplateBinding Background}" CornerRadius="6" />
           <Border Name="Hover" Background="White" Opacity="0" CornerRadius="6" />
-          <ContentPresenter Name="Content" Content="{TemplateBinding Content}"
+          <ContentPresenter Name="Content" Content="{TemplateBinding Content}" Margin="{TemplateBinding Padding}"
                             HorizontalAlignment="Center" VerticalAlignment="Center" />
         </Panel>
       </ControlTemplate>
@@ -70,6 +70,23 @@
   <Style Selector="Button.flat:pressed /template/ Border#Hover">
     <Setter Property="Background" Value="Black" />
     <Setter Property="Opacity" Value="0.12" />
+  </Style>
+
+  <!-- Кнопка-ссылка. -->
+  <Style Selector="Button.link">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Foreground" Value="#5DADE2" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <ContentPresenter Name="Content" Content="{TemplateBinding Content}" Background="Transparent"
+                          Foreground="{TemplateBinding Foreground}" />
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="Button.link:pointerover /template/ ContentPresenter#Content">
+    <Setter Property="Foreground" Value="#8FCBF0" />
   </Style>
 
   <!-- Заголовки разделов в настройках. -->

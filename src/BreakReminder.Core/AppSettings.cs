@@ -67,6 +67,10 @@ public sealed class AppSettings
     public double WeatherLat = double.NaN;   // координаты найденного города
     public double WeatherLon = double.NaN;
 
+    // ---- свои задачи ----
+    public bool TaskAlerts = true;           // напоминать о задачах со временем
+    public int TaskAlertMin = 5;             // за сколько минут (0 — ровно во время)
+
     public bool HasWeatherPlace => !double.IsNaN(WeatherLat) && !double.IsNaN(WeatherLon);
 
     // ---- обновления ----
@@ -148,6 +152,9 @@ public sealed class AppSettings
             s.WeatherCity = Str(d, "WeatherCity", s.WeatherCity);
             s.WeatherLat = Dbl(d, "WeatherLat");
             s.WeatherLon = Dbl(d, "WeatherLon");
+
+            s.TaskAlerts = Bool(d, "TaskAlerts", s.TaskAlerts);
+            s.TaskAlertMin = Int(d, "TaskAlertMin", s.TaskAlertMin, 0, 120);
 
             s.UpdateOnStart = Bool(d, "UpdateOnStart", s.UpdateOnStart);
             s.UpdateDaily = Bool(d, "UpdateDaily", s.UpdateDaily);
@@ -234,6 +241,8 @@ public sealed class AppSettings
             W("WeatherCity", OneLine(WeatherCity));
             W("WeatherLat", HasWeatherPlace ? WeatherLat.ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
             W("WeatherLon", HasWeatherPlace ? WeatherLon.ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
+            B("TaskAlerts", TaskAlerts);
+            W("TaskAlertMin", TaskAlertMin);
             B("UpdateOnStart", UpdateOnStart);
             B("UpdateDaily", UpdateDaily);
             W("UpdateSkipVersion", OneLine(UpdateSkipVersion));

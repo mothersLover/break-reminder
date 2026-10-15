@@ -5,7 +5,11 @@ namespace BreakReminder.App;
 
 public partial class MainWindow : Window
 {
-    public event Action? MainClicked, PauseClicked, StatsClicked, SettingsClicked;
+    public event Action? MainClicked, PauseClicked, StatsClicked, SettingsClicked, AgendaClicked;
+
+    /// <summary>Сколько осталось на сегодня (встречи + невыполненные задачи) — в подписи ссылки.</summary>
+    public void SetAgendaCount(int n) =>
+        AgendaLink.Content = n > 0 ? $"Все задачи на сегодня ({n}) →" : "Все задачи на сегодня →";
 
     public MainWindow()
     {
@@ -17,6 +21,7 @@ public partial class MainWindow : Window
         PauseButton.Click += (_, _) => PauseClicked?.Invoke();
         StatsButton.Click += (_, _) => StatsClicked?.Invoke();
         SettingsButton.Click += (_, _) => SettingsClicked?.Invoke();
+        AgendaLink.Click += (_, _) => AgendaClicked?.Invoke();
         ToolTip.SetTip(StatsButton, "Статистика по неделям");
         ToolTip.SetTip(SettingsButton, "Настройки");
     }

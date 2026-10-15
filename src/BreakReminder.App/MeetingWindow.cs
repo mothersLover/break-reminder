@@ -13,6 +13,8 @@ public sealed class MeetingWindow : Window
 {
     static MeetingWindow? current;
 
+    public static bool IsOpen => current != null;
+
     public static void Show(Meeting m, AppSettings s, IPlatform platform)
     {
         current?.Close();
