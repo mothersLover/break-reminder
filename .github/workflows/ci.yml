@@ -6,6 +6,23 @@ on:
   pull_request:
 
 jobs:
+  # У каждой версии в CHANGELOG.md должна быть ссылка внизу файла — иначе заголовок на GitHub не кликабельный.
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Version links in CHANGELOG.md
+        run: |
+          missing=0
+          for v in $(sed -nE 's/^## \[(Unreleased|[0-9]+\.[0-9]+\.[0-9]+)\].*/\1/p' CHANGELOG.md); do
+            if ! grep -q "^\[$v\]: " CHANGELOG.md; then
+              echo "::warning file=CHANGELOG.md::Нет ссылки для [$v]. Добавь внизу файла: [$v]: https://github.com/${{ github.repository }}/compare/v<предыдущая>...v$v"
+              missing=1
+            fi
+          done
+          [ $missing -eq 0 ] && echo "Все версии со ссылками."
+          exit 0
+
   test:
     runs-on: ${{ matrix.os }}
     strategy:
