@@ -259,8 +259,91 @@
         </ScrollViewer>
       </TabItem>
 
+      <!-- ===================== ИИ-помощник ===================== -->
+      <TabItem Header="ИИ-помощник">
+        <ScrollViewer>
+          <Grid ColumnDefinitions="*,32,*" Margin="4,0,8,0">
+            <StackPanel Grid.Column="0">
+              <TextBlock Classes="h" Text="Подключение" />
+              <CheckBox x:Name="AiCheck" Content="Включить ИИ-помощника" />
+              <TextBlock Classes="hint" Margin="28,0,0,0"
+                         Text="Пока выключено, программа никуда не обращается, а помощник скрыт." />
+
+              <Grid Classes="row" ColumnDefinitions="110,*" Margin="0,12,0,3">
+                <TextBlock Text="Через" />
+                <ComboBox Grid.Column="1" x:Name="AiProviderCombo" HorizontalAlignment="Stretch" />
+              </Grid>
+
+              <!-- Claude Code -->
+              <StackPanel x:Name="ClaudeCodePanel">
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Модель" />
+                  <TextBox Grid.Column="1" x:Name="AiClaudeModelBox" Watermark="как в Claude Code (opus, sonnet, haiku)" /></Grid>
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Путь к claude" />
+                  <TextBox Grid.Column="1" x:Name="AiClaudePathBox" Watermark="найти автоматически" /></Grid>
+                <TextBlock x:Name="AiClaudeFoundText" Classes="hint" Margin="110,2,0,0" />
+                <TextBlock Classes="hint" Margin="0,8,0,0"
+                           Text="Работает по твоей подписке Claude (Pro/Max), без API-ключа. Нужен установленный Claude Code с выполненным входом: в терминале запусти claude и войди своим аккаунтом. Запросы расходуют лимиты подписки, ответ приходит на пару секунд медленнее, чем через API." />
+              </StackPanel>
+
+              <!-- Anthropic API -->
+              <StackPanel x:Name="AnthropicPanel">
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="API-ключ" />
+                  <TextBox Grid.Column="1" x:Name="AiAnthropicKeyBox" PasswordChar="•" Watermark="sk-ant-…" /></Grid>
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Модель" />
+                  <TextBox Grid.Column="1" x:Name="AiAnthropicModelBox" /></Grid>
+                <TextBlock Classes="hint" Margin="0,8,0,0"
+                           Text="Ключ создаётся в Anthropic Console (console.anthropic.com → API Keys), оплата отдельно от подписки — по факту запросов. claude-opus-5-5 — самая умная; claude-haiku-5-5 — намного дешевле и для упражнений обычно хватает." />
+              </StackPanel>
+
+              <!-- OpenAI-совместимый -->
+              <StackPanel x:Name="OpenAiPanel">
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Адрес API" />
+                  <TextBox Grid.Column="1" x:Name="AiOpenAiUrlBox" /></Grid>
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="API-ключ" />
+                  <TextBox Grid.Column="1" x:Name="AiOpenAiKeyBox" PasswordChar="•" /></Grid>
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Модель" />
+                  <TextBox Grid.Column="1" x:Name="AiOpenAiModelBox" Watermark="название модели у этого сервиса" /></Grid>
+                <TextBlock Classes="hint" Margin="0,8,0,0"
+                           Text="Любой сервис с OpenAI-совместимым API: OpenAI, OpenRouter, DeepSeek, LM Studio и другие. Адрес — до /chat/completions, например https://openrouter.ai/api/v1." />
+              </StackPanel>
+
+              <!-- Ollama -->
+              <StackPanel x:Name="OllamaPanel">
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Адрес" />
+                  <TextBox Grid.Column="1" x:Name="AiOllamaUrlBox" /></Grid>
+                <Grid Classes="row" ColumnDefinitions="110,*"><TextBlock Text="Модель" />
+                  <TextBox Grid.Column="1" x:Name="AiOllamaModelBox" Watermark="например, llama3.2" /></Grid>
+                <TextBlock Classes="hint" Margin="0,8,0,0"
+                           Text="Модель работает на этом компьютере: бесплатно, без интернета, ничего никуда не уходит. Установи Ollama (ollama.com) и скачай модель командой ollama pull &lt;модель&gt;. Маленькие модели отвечают быстро, но слабее в грамматике." />
+              </StackPanel>
+
+              <Button x:Name="AiTestButton" Content="Проверить подключение" Margin="0,12,0,0" />
+              <TextBlock x:Name="AiStatusText" Classes="hint" Margin="0,8,0,0" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="h" Text="Как помогать" />
+              <CheckBox x:Name="AiHintsCheck">
+                <TextBlock TextWrapping="Wrap" Text="Проверяя задания, сначала давать подсказку, а не готовый ответ" />
+              </CheckBox>
+              <TextBlock Classes="hint" Margin="28,2,0,0"
+                         Text="Правильный вариант — после второй попытки или по просьбе." />
+
+              <TextBlock Classes="h" Text="Память" />
+              <TextBlock Classes="hint"
+                         Text="Помощник помнит тебя по двум запискам: «О себе» (пишешь ты — учебник, юнит, цели) и заметкам, которые он сам обновляет после каждого разговора: что пройдено, где ошибаешься, о чём договорились." />
+              <Button x:Name="AiMemoryButton" Content="Что помощник обо мне знает…" Margin="0,10,0,0" />
+              <TextBlock Classes="hint" Margin="0,12,0,0" Foreground="#E0B060"
+                         Text="В выбранный сервис отправляются только эти записки и текущий разговор. Календарь, задачи и статистика — никогда. Ключи хранятся только на этом компьютере." />
+              <TextBlock Classes="hint" Margin="0,12,0,0"
+                         Text="Открыть помощника — ссылка «Помощник» на главном экране или пункт в меню трея." />
+            </StackPanel>
+          </Grid>
+        </ScrollViewer>
+      </TabItem>
+
       <!-- ===================== Тексты уведомлений ===================== -->
-      <TabItem Header="Тексты уведомлений">
+      <TabItem Header="Тексты">
         <ScrollViewer>
           <Grid ColumnDefinitions="*,32,*" RowDefinitions="Auto,Auto" Margin="4,0,8,0">
             <StackPanel Grid.Column="0">

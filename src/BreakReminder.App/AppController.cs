@@ -15,10 +15,12 @@ public sealed class AppController
     readonly FileHistoryStore history = new();
     readonly TaskStore tasks = new();
     AgendaWindow? agenda;
+    readonly TutorMemory memory = new();
+    AssistantWindow? assistant;
     readonly WorkDayEngine engine;
     readonly MainWindow main;
     readonly TrayIcon tray;
-    readonly NativeMenuItem miPause, miMain;
+    readonly NativeMenuItem miPause, miMain, miAssistant;
     readonly DispatcherTimer timer, calendarTimer, updateTimer;
     AppSettings settings;
     ReminderWindow? reminder;
@@ -53,6 +55,7 @@ public sealed class AppController
         main.StatsClicked += OpenStats;
         main.SettingsClicked += OpenSettings;
         main.AgendaClicked += OpenAgenda;
+        main.AssistantClicked += OpenAssistant;
         main.Closing += OnMainClosing;
 
         // ---- трей ----
@@ -65,12 +68,15 @@ public sealed class AppController
         miMain.Click += (_, _) => OnMainClicked();
         var miAgenda = new NativeMenuItem("Задачи на сегодня");
         miAgenda.Click += (_, _) => OpenAgenda();
+        miAssistant = new NativeMenuItem("Помощник");
+        miAssistant.Click += (_, _) => OpenAssistant();
         var miExit = new NativeMenuItem("Выход");
         miExit.Click += async (_, _) => await ExitWithConfirm();
         menu.Items.Add(miShow);
         menu.Items.Add(miPause);
         menu.Items.Add(miMain);
         menu.Items.Add(miAgenda);
+        menu.Items.Add(miAssistant);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(miExit);
         tray = new TrayIcon { Icon = Icons.Clock(Palette.Gray), ToolTipText = "Отдыхалка", Menu = menu, IsVisible = true };
@@ -133,6 +139,8 @@ public sealed class AppController
         int upcoming = (settings.CalendarOn ? engine.Meetings.Count(m => m.Start.Date == now.Date && m.End > now) : 0)
                        + tasks.ForDay(now).Count(t => !t.Done);
         main.SetAgendaCount(upcoming);
+        main.SetAssistantVisible(settings.AiOn);
+        miAssistant.IsVisible = settings.AiOn;
 
         bool idle = engine.State == WorkState.Idle, paused = engine.State == WorkState.Paused;
         tray.Icon = Icons.Clock(idle ? Palette.Gray : paused ? Palette.Amber : engine.ReminderOpen ? Palette.Red : Palette.Green);
@@ -201,7 +209,7 @@ public sealed class AppController
     async void OpenSettings()
     {
         ShowMain();
-        var w = new SettingsWindow(settings, platform, calendarStatus, engine.Meetings);
+        var w = new SettingsWindow(settings, platform, calendarStatus, engine.Meetings, memory);
         var result = await w.ShowDialog<AppSettings?>(main);
         if (result == null) return;
         bool calendarChanged = result.CalendarOn != settings.CalendarOn || result.CalendarUrl != settings.CalendarUrl;
@@ -211,6 +219,8 @@ public sealed class AppController
         platform.SetAutostart(w.AutostartChecked);
         ApplyHotkey();
         if (calendarChanged) RefreshCalendar();
+        if (!settings.AiOn) assistant?.Close();   // помощника выключили
+        else assistant?.Rebuild();                // могли сменить подключение
         Render();
         if (w.InstallRequested is { } release) ShowUpdateWindow(release);
     }
@@ -306,6 +316,22 @@ public sealed class AppController
         agenda = new AgendaWindow(tasks, () => engine.Meetings, settings.CalendarOn, () => calendarStatus, platform);
         agenda.Closed += (_, _) => agenda = null;
         agenda.Show();
+    }
+
+    // ---------- ИИ-помощник ----------
+
+    void OpenAssistant()
+    {
+        if (!settings.AiOn) return;
+        if (assistant != null)
+        {
+            if (assistant.WindowState == WindowState.Minimized) assistant.WindowState = WindowState.Normal;
+            assistant.Activate();
+            return;
+        }
+        assistant = new AssistantWindow(() => settings, memory);
+        assistant.Closed += (_, _) => assistant = null;
+        assistant.Show();
     }
 
     // ---------- утро и вечер ----------
@@ -435,6 +461,7 @@ public sealed class AppController
         calendarTimer.Stop();
         updateTimer.Stop();
         updateWindow?.Close();
+        assistant?.Close();
         if (endDay) engine.EndDay(DateTime.Now);
         CloseReminderWindow();
         tray.IsVisible = false;

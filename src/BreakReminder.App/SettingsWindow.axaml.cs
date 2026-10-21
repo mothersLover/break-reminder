@@ -25,10 +25,14 @@ public partial class SettingsWindow : Window
     string placeName;
     double placeLat, placeLon;
 
+    readonly TutorMemory? memory;
+
     public SettingsWindow() : this(new AppSettings(), null!, "") { }
 
-    public SettingsWindow(AppSettings s, IPlatform platform, string calendarStatus, IReadOnlyList<Meeting>? meetings = null)
+    public SettingsWindow(AppSettings s, IPlatform platform, string calendarStatus, IReadOnlyList<Meeting>? meetings = null,
+        TutorMemory? memory = null)
     {
+        this.memory = memory;
         this.meetings = meetings ?? Array.Empty<Meeting>();
         placeName = s.WeatherCity;
         placeLat = s.WeatherLat;
@@ -167,6 +171,28 @@ public partial class SettingsWindow : Window
             Close(Collect());
         };
         OpenReleasesButton.Click += (_, _) => platform?.OpenPath($"https://github.com/{UpdateChecker.Repo}/releases");
+
+        // ---- ИИ-помощник ----
+        AiCheck.IsChecked = s.AiOn;
+        AiProviderCombo.ItemsSource = AiClients.ProviderNames;
+        AiProviderCombo.SelectedIndex = (int)s.AiProvider;
+        AiClaudeModelBox.Text = s.AiClaudeModel;
+        AiClaudePathBox.Text = s.AiClaudePath;
+        AiAnthropicKeyBox.Text = s.AiAnthropicKey;
+        AiAnthropicModelBox.Text = s.AiAnthropicModel;
+        AiOpenAiUrlBox.Text = s.AiOpenAiUrl;
+        AiOpenAiKeyBox.Text = s.AiOpenAiKey;
+        AiOpenAiModelBox.Text = s.AiOpenAiModel;
+        AiOllamaUrlBox.Text = s.AiOllamaUrl;
+        AiOllamaModelBox.Text = s.AiOllamaModel;
+        AiHintsCheck.IsChecked = s.AiHintsFirst;
+        AiCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        AiProviderCombo.SelectionChanged += (_, _) => { AiStatusText.Text = ""; UpdateEnabled(); };
+        AiClaudePathBox.TextChanged += (_, _) => ShowClaudeFound();
+        ShowClaudeFound();
+        AiTestButton.Click += async (_, _) => await TestAi();
+        AiMemoryButton.IsEnabled = memory != null;
+        AiMemoryButton.Click += async (_, _) => { if (memory != null) await new MemoryWindow(memory).ShowDialog(this); };
 
         // ---- Тексты ----
         FillTexts(s.TitleShort, s.TitleLong, s.TipsShort, s.TipsLong, s.BtnDone, s.BtnSnooze, s.BtnSkip);
@@ -319,6 +345,37 @@ public partial class SettingsWindow : Window
         }
     }
 
+    void ShowClaudeFound()
+    {
+        var custom = (AiClaudePathBox.Text ?? "").Trim();
+        var found = ClaudeCodeClient.Locate(custom);
+        AiClaudeFoundText.Text = found != null
+            ? (custom.Length > 0 ? "Файл найден." : "Найден: " + found)
+            : (custom.Length > 0 ? "По этому пути файла нет." : "Claude Code не найден — установи его или укажи путь.");
+    }
+
+    async Task TestAi()
+    {
+        AiTestButton.IsEnabled = false;
+        AiStatusText.Text = "Спрашиваю…";
+        var started = DateTime.Now;
+        try
+        {
+            var client = AiClients.Create(Collect());
+            var reply = await client.CompleteAsync("Это проверка подключения. Отвечай очень коротко.",
+                new[] { new ChatMessage(true, "Скажи по-французски «подключение работает» — одной фразой.", DateTime.Now) });
+            AiStatusText.Text = $"Работает ({(DateTime.Now - started).TotalSeconds:0} с). Ответ: {reply}";
+        }
+        catch (Exception e)
+        {
+            AiStatusText.Text = "Не получилось: " + e.Message;
+        }
+        finally
+        {
+            AiTestButton.IsEnabled = true;
+        }
+    }
+
     async Task TestCalendar()
     {
         var url = CalendarUrlBox.Text ?? "";
@@ -351,6 +408,12 @@ public partial class SettingsWindow : Window
 
     void UpdateEnabled()
     {
+        var provider = (AiProvider)Math.Max(0, AiProviderCombo.SelectedIndex);
+        ClaudeCodePanel.IsVisible = provider == AiProvider.ClaudeCode;
+        AnthropicPanel.IsVisible = provider == AiProvider.Anthropic;
+        OpenAiPanel.IsVisible = provider == AiProvider.OpenAi;
+        OllamaPanel.IsVisible = provider == AiProvider.Ollama;
+
         EyeEveryNum.IsEnabled = EyeSecondsNum.IsEnabled = EyeCheck.IsChecked == true;
         TaskAlertNum.IsEnabled = TaskAlertCheck.IsChecked == true;
         CityBox.IsEnabled = CitySearchButton.IsEnabled = CityResultsCombo.IsEnabled = WeatherCheck.IsChecked == true;
@@ -431,6 +494,19 @@ public partial class SettingsWindow : Window
         s.UpdateOnStart = UpdateOnStartCheck.IsChecked == true;
         s.UpdateDaily = UpdateDailyCheck.IsChecked == true;
         s.UpdateSkipVersion = skipVersion;
+
+        s.AiOn = AiCheck.IsChecked == true;
+        s.AiProvider = (AiProvider)Math.Max(0, AiProviderCombo.SelectedIndex);
+        s.AiClaudeModel = (AiClaudeModelBox.Text ?? "").Trim();
+        s.AiClaudePath = (AiClaudePathBox.Text ?? "").Trim().Trim('"');
+        s.AiAnthropicKey = (AiAnthropicKeyBox.Text ?? "").Trim();
+        s.AiAnthropicModel = Or(AiAnthropicModelBox.Text, AiClients.DefaultAnthropicModel);
+        s.AiOpenAiUrl = Or(AiOpenAiUrlBox.Text, AiClients.DefaultOpenAiUrl);
+        s.AiOpenAiKey = (AiOpenAiKeyBox.Text ?? "").Trim();
+        s.AiOpenAiModel = (AiOpenAiModelBox.Text ?? "").Trim();
+        s.AiOllamaUrl = Or(AiOllamaUrlBox.Text, AiClients.DefaultOllamaUrl);
+        s.AiOllamaModel = (AiOllamaModelBox.Text ?? "").Trim();
+        s.AiHintsFirst = AiHintsCheck.IsChecked == true;
 
         s.TitleShort = Or(TitleShortBox.Text, Texts.TitleShort);
         s.TitleLong = Or(TitleLongBox.Text, Texts.TitleLong);

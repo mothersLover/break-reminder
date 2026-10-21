@@ -5,11 +5,14 @@ namespace BreakReminder.App;
 
 public partial class MainWindow : Window
 {
-    public event Action? MainClicked, PauseClicked, StatsClicked, SettingsClicked, AgendaClicked;
+    public event Action? MainClicked, PauseClicked, StatsClicked, SettingsClicked, AgendaClicked, AssistantClicked;
 
     /// <summary>Сколько осталось на сегодня (встречи + невыполненные задачи) — в подписи ссылки.</summary>
     public void SetAgendaCount(int n) =>
         AgendaLink.Content = n > 0 ? $"Все задачи на сегодня ({n}) →" : "Все задачи на сегодня →";
+
+    /// <summary>Ссылка «Помощник» — только когда ИИ-помощник включён в настройках.</summary>
+    public void SetAssistantVisible(bool on) => AssistantLink.IsVisible = AssistantSep.IsVisible = on;
 
     public MainWindow()
     {
@@ -22,6 +25,8 @@ public partial class MainWindow : Window
         StatsButton.Click += (_, _) => StatsClicked?.Invoke();
         SettingsButton.Click += (_, _) => SettingsClicked?.Invoke();
         AgendaLink.Click += (_, _) => AgendaClicked?.Invoke();
+        AssistantLink.Click += (_, _) => AssistantClicked?.Invoke();
+        ToolTip.SetTip(AssistantLink, "ИИ-помощник: вопросы, проверка заданий, тренировка пройденного");
         ToolTip.SetTip(StatsButton, "Статистика по неделям");
         ToolTip.SetTip(SettingsButton, "Настройки");
     }

@@ -49,7 +49,10 @@
                HorizontalAlignment="Center" Margin="0,12,0,0" />
     <TextBlock Grid.Row="7" x:Name="MeetingText" FontSize="12" Foreground="#5DADE2"
                HorizontalAlignment="Center" Margin="16,4,16,0" TextTrimming="CharacterEllipsis" />
-    <Button Grid.Row="8" x:Name="AgendaLink" Classes="link" HorizontalAlignment="Center" Margin="0,6,0,0"
-            Content="Все задачи на сегодня" />
+    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,6,0,0" Spacing="10">
+      <Button x:Name="AgendaLink" Classes="link" Content="Все задачи на сегодня" />
+      <TextBlock x:Name="AssistantSep" Text="·" FontSize="13" Foreground="#8C92A5" IsVisible="False" />
+      <Button x:Name="AssistantLink" Classes="link" Content="Помощник →" IsVisible="False" />
+    </StackPanel>
   </Grid>
 </Window>

@@ -78,6 +78,20 @@ public sealed class AppSettings
     public bool UpdateDaily = true;          // и раз в сутки, пока программа работает
     public string UpdateSkipVersion = "";    // «Пропустить эту версию»
 
+    // ---- ИИ-помощник ----
+    public bool AiOn = false;                // главный выключатель: пока выключен — никаких запросов
+    public AiProvider AiProvider = AiProvider.ClaudeCode;
+    public string AiClaudePath = "";         // пусто — найти claude автоматически
+    public string AiClaudeModel = "";        // пусто — модель по умолчанию в Claude Code
+    public string AiAnthropicKey = "";
+    public string AiAnthropicModel = AiClients.DefaultAnthropicModel;
+    public string AiOpenAiUrl = AiClients.DefaultOpenAiUrl;
+    public string AiOpenAiKey = "";
+    public string AiOpenAiModel = "";
+    public string AiOllamaUrl = AiClients.DefaultOllamaUrl;
+    public string AiOllamaModel = "";
+    public bool AiHintsFirst = true;         // при проверке заданий — сначала подсказка
+
     // ---- тексты (советы хранятся в tips.txt / tips_long.txt) ----
     public string TitleShort = Texts.TitleShort;
     public string TitleLong = Texts.TitleLong;
@@ -159,6 +173,19 @@ public sealed class AppSettings
             s.UpdateOnStart = Bool(d, "UpdateOnStart", s.UpdateOnStart);
             s.UpdateDaily = Bool(d, "UpdateDaily", s.UpdateDaily);
             s.UpdateSkipVersion = Str(d, "UpdateSkipVersion", s.UpdateSkipVersion);
+
+            s.AiOn = Bool(d, "AiOn", s.AiOn);
+            if (d.TryGetValue("AiProvider", out var ap) && Enum.TryParse(ap, true, out AiProvider prov)) s.AiProvider = prov;
+            s.AiClaudePath = Str(d, "AiClaudePath", s.AiClaudePath);
+            s.AiClaudeModel = Str(d, "AiClaudeModel", s.AiClaudeModel);
+            s.AiAnthropicKey = Str(d, "AiAnthropicKey", s.AiAnthropicKey);
+            s.AiAnthropicModel = Str(d, "AiAnthropicModel", s.AiAnthropicModel);
+            s.AiOpenAiUrl = Str(d, "AiOpenAiUrl", s.AiOpenAiUrl);
+            s.AiOpenAiKey = Str(d, "AiOpenAiKey", s.AiOpenAiKey);
+            s.AiOpenAiModel = Str(d, "AiOpenAiModel", s.AiOpenAiModel);
+            s.AiOllamaUrl = Str(d, "AiOllamaUrl", s.AiOllamaUrl);
+            s.AiOllamaModel = Str(d, "AiOllamaModel", s.AiOllamaModel);
+            s.AiHintsFirst = Bool(d, "AiHintsFirst", s.AiHintsFirst);
 
             if (d.TryGetValue("CalendarUrl", out var v)) s.CalendarUrl = v;
             if (d.TryGetValue("Sound", out v)) s.Sound = SoundCatalog.Normalize(v);
@@ -246,6 +273,18 @@ public sealed class AppSettings
             B("UpdateOnStart", UpdateOnStart);
             B("UpdateDaily", UpdateDaily);
             W("UpdateSkipVersion", OneLine(UpdateSkipVersion));
+            B("AiOn", AiOn);
+            W("AiProvider", AiProvider);
+            W("AiClaudePath", OneLine(AiClaudePath));
+            W("AiClaudeModel", OneLine(AiClaudeModel));
+            W("AiAnthropicKey", OneLine(AiAnthropicKey));
+            W("AiAnthropicModel", OneLine(AiAnthropicModel));
+            W("AiOpenAiUrl", OneLine(AiOpenAiUrl));
+            W("AiOpenAiKey", OneLine(AiOpenAiKey));
+            W("AiOpenAiModel", OneLine(AiOpenAiModel));
+            W("AiOllamaUrl", OneLine(AiOllamaUrl));
+            W("AiOllamaModel", OneLine(AiOllamaModel));
+            B("AiHintsFirst", AiHintsFirst);
             W("TitleShort", OneLine(TitleShort));
             W("TitleLong", OneLine(TitleLong));
             W("BtnDone", OneLine(BtnDone));
