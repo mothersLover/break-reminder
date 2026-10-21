@@ -17,11 +17,14 @@ public sealed class AppController
     AgendaWindow? agenda;
     readonly TutorMemory memory = new();
     AssistantWindow? assistant;
+    readonly PracticeLog practiceLog = new();
+    readonly PracticeCoach coach;
+    PracticeOfferWindow? practiceOffer;
     readonly WorkDayEngine engine;
     readonly MainWindow main;
     readonly TrayIcon tray;
     readonly NativeMenuItem miPause, miMain, miAssistant;
-    readonly DispatcherTimer timer, calendarTimer, updateTimer;
+    readonly DispatcherTimer timer, calendarTimer, updateTimer, practiceTimer;
     AppSettings settings;
     ReminderWindow? reminder;
     UpdateWindow? updateWindow;
@@ -48,6 +51,8 @@ public sealed class AppController
         engine.Tasks = tasks.All;
         engine.TaskDue += t => TaskAlertWindow.Show(t, settings, platform, tasks);
         tasks.Changed += () => Render();
+        coach = new PracticeCoach(settings, engine, platform, practiceLog);
+        coach.Due += OfferPractice;
 
         main = new MainWindow { Icon = Icons.Clock(Palette.Green) };
         main.MainClicked += OnMainClicked;
@@ -121,6 +126,11 @@ public sealed class AppController
         updateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(24) };
         updateTimer.Tick += (_, _) => { if (settings.UpdateDaily) CheckForUpdates(); };
         updateTimer.Start();
+
+        // Занятия с помощником: проверять, не пора ли, раз в полминуты.
+        practiceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+        practiceTimer.Tick += (_, _) => coach.Tick(DateTime.Now);
+        practiceTimer.Start();
 
         // Следующие запуски программы передают сюда команды ("show", "toggle-pause").
         SingleInstance.Listen(cmd => Dispatcher.UIThread.Post(() => HandleCommand(cmd)));
@@ -216,6 +226,7 @@ public sealed class AppController
         settings = result;
         settings.Save();
         engine.Settings = settings;
+        coach.Settings = settings;
         platform.SetAutostart(w.AutostartChecked);
         ApplyHotkey();
         if (calendarChanged) RefreshCalendar();
@@ -331,7 +342,40 @@ public sealed class AppController
         }
         assistant = new AssistantWindow(() => settings, memory);
         assistant.Closed += (_, _) => assistant = null;
+        assistant.PracticeEnded += (kind, minutes) =>
+        {
+            if (minutes > 0) coach.Finished(kind, DateTime.Now, minutes);
+            else coach.Abandoned(kind, DateTime.Now);
+        };
         assistant.Show();
+    }
+
+    /// <summary>Пора позаниматься — предложение в углу экрана.</summary>
+    void OfferPractice(PracticeKind kind)
+    {
+        practiceOffer?.Close();
+        practiceOffer = new PracticeOfferWindow(kind, settings, platform, practiceLog.Streak(DateTime.Today));
+        practiceOffer.Answered += async choice =>
+        {
+            practiceOffer = null;
+            var now = DateTime.Now;
+            switch (choice)
+            {
+                case PracticeChoice.Start:
+                    coach.Started(kind, now);
+                    OpenAssistant();
+                    if (assistant != null) await assistant.StartPractice(kind, PracticeText.Minutes(kind, settings));
+                    else coach.Abandoned(kind, now);
+                    break;
+                case PracticeChoice.Later:
+                    coach.Snooze(kind, now);
+                    break;
+                default:
+                    coach.Skip(kind, now);
+                    break;
+            }
+        };
+        practiceOffer.Show();
     }
 
     // ---------- утро и вечер ----------
@@ -345,7 +389,8 @@ public sealed class AppController
         }
         string dayInfo = $"Перерыв каждые {settings.IntervalMin} мин"
                          + (settings.AutoDay ? $" · автозавершение в {DateTime.Today + settings.AutoEndTime:HH:mm}" : "")
-                         + (auto ? " · день начат автоматически" : "");
+                         + (auto ? " · день начат автоматически" : "")
+                         + (coach.PlanLine(engine.DayStart) is { } plan ? "\n" + plan : "");
         var w = new GreetingWindow(settings, engine.Meetings, DayPlan.Load(DateTime.Today), dayInfo,
             tasks.ForDay(DateTime.Today).Where(t => !t.Done).ToList());
         w.Show();
@@ -378,7 +423,8 @@ public sealed class AppController
             if (auto) ToastWindow.Show("Рабочий день завершён: " + Format.Minutes(report.Worked) + " работы");
             return;
         }
-        var w = new DayReportWindow(report, history.LoadByDay(), settings);
+        var w = new DayReportWindow(report, history.LoadByDay(), settings,
+            settings.AiOn && settings.PracticeOn ? (practiceLog.MinutesOn(report.End), practiceLog.Streak(report.End)) : null);
         w.StatsRequested += () => { w.Close(); OpenStats(); };
         w.Show();
     }
@@ -460,6 +506,8 @@ public sealed class AppController
         timer.Stop();
         calendarTimer.Stop();
         updateTimer.Stop();
+        practiceTimer.Stop();
+        practiceOffer?.Close();
         updateWindow?.Close();
         assistant?.Close();
         if (endDay) engine.EndDay(DateTime.Now);

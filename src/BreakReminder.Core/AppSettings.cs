@@ -92,6 +92,16 @@ public sealed class AppSettings
     public string AiOllamaModel = "";
     public bool AiHintsFirst = true;         // при проверке заданий — сначала подсказка
 
+    // ---- занятия по расписанию (нужен включённый помощник) ----
+    public bool PracticeOn = true;
+    public bool PracticeMorning = true;      // разминка после начала рабочего дня
+    public int PracticeMorningMin = 5;
+    public int PracticeDayCount = 2;         // мини-тренировок за рабочий день (0 — не надо)
+    public int PracticeDayMin = 3;
+    public bool PracticeEvening = true;      // вечернее занятие
+    public int PracticeEveningAt = 20 * 60;  // 20:00
+    public int PracticeEveningMin = 15;
+
     // ---- тексты (советы хранятся в tips.txt / tips_long.txt) ----
     public string TitleShort = Texts.TitleShort;
     public string TitleLong = Texts.TitleLong;
@@ -186,6 +196,14 @@ public sealed class AppSettings
             s.AiOllamaUrl = Str(d, "AiOllamaUrl", s.AiOllamaUrl);
             s.AiOllamaModel = Str(d, "AiOllamaModel", s.AiOllamaModel);
             s.AiHintsFirst = Bool(d, "AiHintsFirst", s.AiHintsFirst);
+            s.PracticeOn = Bool(d, "PracticeOn", s.PracticeOn);
+            s.PracticeMorning = Bool(d, "PracticeMorning", s.PracticeMorning);
+            s.PracticeMorningMin = Int(d, "PracticeMorningMin", s.PracticeMorningMin, 1, 60);
+            s.PracticeDayCount = Int(d, "PracticeDayCount", s.PracticeDayCount, 0, 6);
+            s.PracticeDayMin = Int(d, "PracticeDayMin", s.PracticeDayMin, 1, 30);
+            s.PracticeEvening = Bool(d, "PracticeEvening", s.PracticeEvening);
+            s.PracticeEveningAt = Int(d, "PracticeEveningAt", s.PracticeEveningAt, 0, 24 * 60 - 1);
+            s.PracticeEveningMin = Int(d, "PracticeEveningMin", s.PracticeEveningMin, 1, 120);
 
             if (d.TryGetValue("CalendarUrl", out var v)) s.CalendarUrl = v;
             if (d.TryGetValue("Sound", out v)) s.Sound = SoundCatalog.Normalize(v);
@@ -285,6 +303,14 @@ public sealed class AppSettings
             W("AiOllamaUrl", OneLine(AiOllamaUrl));
             W("AiOllamaModel", OneLine(AiOllamaModel));
             B("AiHintsFirst", AiHintsFirst);
+            B("PracticeOn", PracticeOn);
+            B("PracticeMorning", PracticeMorning);
+            W("PracticeMorningMin", PracticeMorningMin);
+            W("PracticeDayCount", PracticeDayCount);
+            W("PracticeDayMin", PracticeDayMin);
+            B("PracticeEvening", PracticeEvening);
+            W("PracticeEveningAt", PracticeEveningAt);
+            W("PracticeEveningMin", PracticeEveningMin);
             W("TitleShort", OneLine(TitleShort));
             W("TitleLong", OneLine(TitleLong));
             W("BtnDone", OneLine(BtnDone));

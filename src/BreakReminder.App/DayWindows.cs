@@ -233,7 +233,8 @@ public sealed class DayReportWindow : Window
 {
     public event Action? StatsRequested;
 
-    public DayReportWindow(DayReport r, Dictionary<DateTime, DayStat> history, AppSettings s)
+    /// <param name="practice">Занятия с помощником за день: минуты и серия дней (null — занятия выключены).</param>
+    public DayReportWindow(DayReport r, Dictionary<DateTime, DayStat> history, AppSettings s, (int Minutes, int Streak)? practice = null)
     {
         Title = "Итоги дня";
         Icon = Icons.Clock(Palette.Green);
@@ -268,6 +269,13 @@ public sealed class DayReportWindow : Window
         var week = history.Where(kv => kv.Key > r.End.Date.AddDays(-7) && kv.Key <= r.End.Date && kv.Value.Minutes > 0).Select(kv => kv.Value.Minutes).ToList();
         if (week.Count > 1)
             tiles.Children.Add(Tile("В среднем за неделю", Format.Minutes(TimeSpan.FromMinutes(week.Average())), null, new Thickness(5, 5, 0, 0)));
+        if (practice is { } p)
+        {
+            bool left = tiles.Children.Count % 2 == 0;
+            tiles.Children.Add(Tile("Занятия", p.Minutes > 0 ? p.Minutes + " мин" : "сегодня не было",
+                p.Streak > 0 ? $"серия {GreetingWindow.Plural(p.Streak, "день", "дня", "дней")} подряд" : null,
+                left ? new Thickness(0, 5, 5, 0) : new Thickness(5, 5, 0, 0)));
+        }
         body.Children.Add(tiles);
 
         body.Children.Add(Card.Text(Verdict(r), 14, Palette.Text));

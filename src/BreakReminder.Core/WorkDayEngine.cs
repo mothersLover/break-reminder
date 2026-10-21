@@ -526,6 +526,9 @@ public sealed class WorkDayEngine
         fullscreenActive = probe.IsFullscreenAppActive();
     }
 
+    /// <summary>Сейчас встреча, созвон или полноэкранная программа — не время отвлекать.</summary>
+    public bool IsBusy(DateTime now) => BusyWithoutInput(now);
+
     bool BusyWithoutInput(DateTime now)
     {
         RefreshBusy(now);

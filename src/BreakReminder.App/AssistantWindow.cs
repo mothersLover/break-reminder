@@ -47,6 +47,21 @@ public sealed class AssistantWindow : Window
     CancellationTokenSource? cts;
     Control? typing;
 
+    // ---- занятие по расписанию ----
+    PracticeKind? practice;
+    int practiceMinutes;
+    DateTime practiceStart, practiceEnd;
+    bool practiceAnswered, practiceFinishing;
+    readonly TextBlock bannerText = Card.Text("", 14, Palette.Text, FontWeight.SemiBold);
+    readonly Button bannerButton = new() { Content = "Закончить", VerticalAlignment = VerticalAlignment.Center };
+    readonly Border banner;
+    readonly DispatcherTimer practiceTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    /// <summary>Занятие закончилось: вид и сколько минут длилось (0 — так и не начал отвечать).</summary>
+    public event Action<PracticeKind, int>? PracticeEnded;
+
+    public bool InPractice => practice != null;
+
     public AssistantWindow(Func<AppSettings> settings, TutorMemory memory)
     {
         this.settings = settings;
@@ -83,6 +98,20 @@ public sealed class AssistantWindow : Window
 
         scroll = new ScrollViewer { Content = list, Margin = new Thickness(0, 14, 0, 12) };
 
+        var bannerGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        bannerText.VerticalAlignment = VerticalAlignment.Center;
+        bannerGrid.Children.Add(bannerText);
+        Grid.SetColumn(bannerButton, 1);
+        bannerGrid.Children.Add(bannerButton);
+        banner = new Border
+        {
+            Background = Palette.B(Palette.Card), BorderBrush = Palette.B(Palette.Blue), BorderThickness = new Thickness(4, 0, 0, 0),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(14, 8), Margin = new Thickness(0, 14, 0, 0),
+            IsVisible = false, Child = bannerGrid
+        };
+        bannerButton.Click += async (_, _) => await FinishPractice();
+        practiceTimer.Tick += (_, _) => UpdateBanner();
+
         var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
         bottom.Children.Add(input);
         Grid.SetColumn(send, 1);
@@ -98,11 +127,13 @@ public sealed class AssistantWindow : Window
             }
         }, RoutingStrategies.Tunnel);
 
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Margin = new Thickness(20, 18, 20, 16) };
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(20, 18, 20, 16) };
         root.Children.Add(header);
-        Grid.SetRow(scroll, 1);
+        Grid.SetRow(banner, 1);
+        root.Children.Add(banner);
+        Grid.SetRow(scroll, 2);
         root.Children.Add(scroll);
-        Grid.SetRow(bottom, 2);
+        Grid.SetRow(bottom, 3);
         root.Children.Add(bottom);
         Content = root;
 
@@ -110,6 +141,7 @@ public sealed class AssistantWindow : Window
         Closed += (_, _) =>
         {
             cts?.Cancel();
+            EndPractice();
             _ = AssistantNotes.UpdateAsync(settings(), memory);   // запомнить, о чём говорили
         };
         Rebuild();
@@ -141,19 +173,31 @@ public sealed class AssistantWindow : Window
     {
         var text = (input.Text ?? "").Trim();
         if (text.Length == 0 || cts != null) return;
+        input.Text = "";
+        if (practice != null) practiceAnswered = true;
+        await SendText(text);
+    }
+
+    /// <summary>Отправить сообщение от имени человека; extra — дополнительные указания помощнику на этот запрос.</summary>
+    async Task SendText(string text, string? extra = null)
+    {
+        while (cts != null) await Task.Delay(200);           // дождаться прошлого ответа
         if (memory.Chat.Count == 0) list.Children.Clear();  // убрать приветствие
 
         var s = settings();
         memory.Add(new ChatMessage(true, text, DateTime.Now));
         list.Children.Add(Bubble(text, true));
-        input.Text = "";
         SetBusy(true);
+
+        string system = memory.SystemPrompt(s, DateTime.Now);
+        if (practice is { } kind) system += "\n\n" + PracticeText.Instructions(kind, practiceMinutes);
+        if (extra != null) system += "\n" + extra;
 
         cts = new CancellationTokenSource();
         try
         {
             var client = AiClients.Create(s);
-            var reply = await client.CompleteAsync(memory.SystemPrompt(s, DateTime.Now), AiClients.ForModel(memory.Chat), cts.Token);
+            var reply = await client.CompleteAsync(system, AiClients.ForModel(memory.Chat), cts.Token);
             memory.Add(new ChatMessage(false, reply, DateTime.Now));
             RemoveTyping();
             list.Children.Add(Bubble(reply, false));
@@ -175,9 +219,70 @@ public sealed class AssistantWindow : Window
         input.Focus();
     }
 
+    // ---------- занятие ----------
+
+    /// <summary>Начать занятие: таймер сверху, помощник сам даёт первое задание.</summary>
+    public async Task StartPractice(PracticeKind kind, int minutes)
+    {
+        if (practice != null) return;
+        practice = kind;
+        practiceMinutes = minutes;
+        practiceStart = DateTime.Now;
+        practiceEnd = practiceStart.AddMinutes(minutes);
+        practiceAnswered = practiceFinishing = false;
+        banner.IsVisible = true;
+        UpdateBanner();
+        practiceTimer.Start();
+        await SendText($"▶ {PracticeText.Title(kind)} · {minutes} мин", "Начни занятие сразу с первого задания.");
+        input.Focus();
+    }
+
+    void UpdateBanner()
+    {
+        if (practice is not { } kind) return;
+        var left = practiceEnd - DateTime.Now;
+        if (left > TimeSpan.Zero)
+        {
+            bannerText.Text = $"{PracticeText.Title(kind)} · осталось {Format.Ms(left)}";
+            bannerText.Foreground = Palette.B(Palette.Text);
+            bannerButton.Content = "Закончить";
+            bannerButton.Classes.Remove("accent");
+        }
+        else
+        {
+            bannerText.Text = "Время вышло — подведём итог?";
+            bannerText.Foreground = Palette.B(Palette.Green);
+            bannerButton.Content = "Подвести итог";
+            if (!bannerButton.Classes.Contains("accent")) bannerButton.Classes.Add("accent");
+        }
+    }
+
+    /// <summary>«Закончить» / «Подвести итог»: помощник подводит итог, занятие засчитывается.</summary>
+    async Task FinishPractice()
+    {
+        if (practice == null || practiceFinishing) return;
+        practiceFinishing = true;
+        bannerButton.IsEnabled = false;
+        if (practiceAnswered)
+            await SendText("Стоп, подведи итог занятия.", "Сейчас подведи итог занятия: 2–3 строки.");
+        bannerButton.IsEnabled = true;
+        EndPractice();
+    }
+
+    void EndPractice()
+    {
+        if (practice is not { } kind) return;
+        practice = null;
+        practiceTimer.Stop();
+        banner.IsVisible = false;
+        var elapsed = DateTime.Now - practiceStart;
+        int minutes = practiceAnswered ? Math.Clamp((int)Math.Round(elapsed.TotalMinutes), 1, practiceMinutes * 3) : 0;
+        PracticeEnded?.Invoke(kind, minutes);
+    }
+
     async Task NewConversation()
     {
-        if (cts != null || memory.Chat.Count == 0) return;
+        if (cts != null || memory.Chat.Count == 0 || practice != null) return;
         if (!await ConfirmDialog.Ask(this, "Начать новый разговор? Переписка очистится, но помощник сохранит заметки о ней.")) return;
         var s = settings();
         subtitle.Text = "Запоминаю разговор…";
@@ -312,5 +417,100 @@ static class ControlExt
     {
         c.Margin = new Thickness(left, top, right, bottom);
         return c;
+    }
+}
+
+public enum PracticeChoice { Start, Later, Skip }
+
+/// <summary>«Пора позаниматься» в углу экрана: «Начать» / «Позже» (через 30 мин) / «Не сегодня». Без ответа 3 минуты — как «позже».</summary>
+public sealed class PracticeOfferWindow : Window
+{
+    bool answered;
+
+    public event Action<PracticeChoice>? Answered;
+
+    public PracticeOfferWindow(PracticeKind kind, AppSettings s, IPlatform platform, int streak)
+    {
+        Title = PracticeText.Title(kind);
+        Icon = Icons.Clock(Palette.Blue);
+        SystemDecorations = SystemDecorations.None;
+        Topmost = true;
+        ShowActivated = false;
+        ShowInTaskbar = true;
+        CanResize = false;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Background = Palette.B(Palette.Blue);
+        Opacity = 0;
+
+        int minutes = PracticeText.Minutes(kind, s);
+        string hint = kind switch
+        {
+            PracticeKind.Morning => "Пара лёгких заданий на повторение — и за работу.",
+            PracticeKind.Day => "Несколько быстрых заданий на то, что путается.",
+            _ => "Новое по текущей теме и повторение ошибок."
+        };
+
+        var start = new Button { Content = "Начать", Classes = { "flat" }, Background = Palette.B(Palette.Green) };
+        var later = new Button { Content = "Позже", Classes = { "flat" }, Background = Palette.B(Palette.Gray) };
+        ToolTip.SetTip(later, $"Напомню через {(int)PracticeCoach.SnoozeTime.TotalMinutes} минут");
+        var skip = new Button { Content = "Не сегодня", Classes = { "flat" }, Background = Palette.B(Palette.Gray) };
+        start.Click += (_, _) => Answer(PracticeChoice.Start);
+        later.Click += (_, _) => Answer(PracticeChoice.Later);
+        skip.Click += (_, _) => Answer(PracticeChoice.Skip);
+        var buttons = new Grid { ColumnDefinitions = new ColumnDefinitions("4*,8,3*,8,3*"), Height = 40, Margin = new Thickness(0, 12, 0, 0) };
+        buttons.Children.Add(start);
+        Grid.SetColumn(later, 2);
+        buttons.Children.Add(later);
+        Grid.SetColumn(skip, 4);
+        buttons.Children.Add(skip);
+
+        var body = new StackPanel
+        {
+            Spacing = 2,
+            Children =
+            {
+                Card.Text($"{minutes} мин · помощник" + (streak > 0 ? $" · серия {streak} дн." : ""), 13, Palette.Muted),
+                Card.Text(PracticeText.Title(kind), 21, Palette.Text, FontWeight.Bold),
+                Card.Text(hint, 13.5, Palette.Text),
+                buttons
+            }
+        };
+
+        Content = new Border
+        {
+            Padding = new Thickness(5),
+            Background = Palette.B(Palette.Blue),
+            Child = new Border { Background = Palette.B(Palette.Card), Width = 420, Padding = new Thickness(22, 14, 22, 18), Child = body }
+        };
+
+        KeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Escape) Answer(PracticeChoice.Later);
+            if (e.Key is Key.Escape or Key.Enter or Key.Space) e.Handled = true;
+        };
+        Opened += (_, _) =>
+        {
+            var screen = Screens.Primary;
+            if (screen != null)
+            {
+                var wa = screen.WorkingArea;
+                double k = screen.Scaling;
+                int y = wa.Y + (int)(16 * k) + (MeetingWindow.IsOpen ? (int)(210 * k) : 0);
+                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y);
+            }
+            Opacity = 1;
+            if (s.SoundOn) platform.PlayWav(Synth.Melody("soft", s.Volume / 100.0));
+            DispatcherTimer.RunOnce(() => Answer(PracticeChoice.Later), TimeSpan.FromMinutes(3));
+        };
+        Closed += (_, _) => Answer(PracticeChoice.Later);
+    }
+
+    void Answer(PracticeChoice c)
+    {
+        if (answered) return;
+        answered = true;
+        Answered?.Invoke(c);
+        Close();
     }
 }

@@ -186,6 +186,18 @@ public partial class SettingsWindow : Window
         AiOllamaUrlBox.Text = s.AiOllamaUrl;
         AiOllamaModelBox.Text = s.AiOllamaModel;
         AiHintsCheck.IsChecked = s.AiHintsFirst;
+        PracticeCheck.IsChecked = s.PracticeOn;
+        PracticeMorningCheck.IsChecked = s.PracticeMorning;
+        PracticeMorningNum.Value = s.PracticeMorningMin;
+        PracticeDayCountNum.Value = s.PracticeDayCount;
+        PracticeDayMinNum.Value = s.PracticeDayMin;
+        PracticeEveningCheck.IsChecked = s.PracticeEvening;
+        PracticeEveningPicker.SelectedTime = TimeSpan.FromMinutes(s.PracticeEveningAt);
+        PracticeEveningNum.Value = s.PracticeEveningMin;
+        PracticeCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        PracticeMorningCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        PracticeEveningCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
+        PracticeDayCountNum.ValueChanged += (_, _) => UpdateEnabled();
         AiCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
         AiProviderCombo.SelectionChanged += (_, _) => { AiStatusText.Text = ""; UpdateEnabled(); };
         AiClaudePathBox.TextChanged += (_, _) => ShowClaudeFound();
@@ -413,6 +425,11 @@ public partial class SettingsWindow : Window
         AnthropicPanel.IsVisible = provider == AiProvider.Anthropic;
         OpenAiPanel.IsVisible = provider == AiProvider.OpenAi;
         OllamaPanel.IsVisible = provider == AiProvider.Ollama;
+        bool practice = PracticeCheck.IsChecked == true;
+        PracticeMorningCheck.IsEnabled = PracticeEveningCheck.IsEnabled = PracticeDayCountNum.IsEnabled = practice;
+        PracticeMorningNum.IsEnabled = practice && PracticeMorningCheck.IsChecked == true;
+        PracticeDayMinNum.IsEnabled = practice && N(PracticeDayCountNum, 0) > 0;
+        PracticeEveningPicker.IsEnabled = PracticeEveningNum.IsEnabled = practice && PracticeEveningCheck.IsChecked == true;
 
         EyeEveryNum.IsEnabled = EyeSecondsNum.IsEnabled = EyeCheck.IsChecked == true;
         TaskAlertNum.IsEnabled = TaskAlertCheck.IsChecked == true;
@@ -507,6 +524,14 @@ public partial class SettingsWindow : Window
         s.AiOllamaUrl = Or(AiOllamaUrlBox.Text, AiClients.DefaultOllamaUrl);
         s.AiOllamaModel = (AiOllamaModelBox.Text ?? "").Trim();
         s.AiHintsFirst = AiHintsCheck.IsChecked == true;
+        s.PracticeOn = PracticeCheck.IsChecked == true;
+        s.PracticeMorning = PracticeMorningCheck.IsChecked == true;
+        s.PracticeMorningMin = N(PracticeMorningNum, s.PracticeMorningMin);
+        s.PracticeDayCount = N(PracticeDayCountNum, s.PracticeDayCount);
+        s.PracticeDayMin = N(PracticeDayMinNum, s.PracticeDayMin);
+        s.PracticeEvening = PracticeEveningCheck.IsChecked == true;
+        s.PracticeEveningAt = Minutes(PracticeEveningPicker, s.PracticeEveningAt);
+        s.PracticeEveningMin = N(PracticeEveningNum, s.PracticeEveningMin);
 
         s.TitleShort = Or(TitleShortBox.Text, Texts.TitleShort);
         s.TitleLong = Or(TitleLongBox.Text, Texts.TitleLong);
