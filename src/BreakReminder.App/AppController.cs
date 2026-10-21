@@ -18,12 +18,14 @@ public sealed class AppController
     readonly TutorMemory memory = new();
     AssistantWindow? assistant;
     readonly PracticeLog practiceLog = new();
+    readonly CardStore cards = new();
+    CardsWindow? cardsWindow;
     readonly PracticeCoach coach;
     PracticeOfferWindow? practiceOffer;
     readonly WorkDayEngine engine;
     readonly MainWindow main;
     readonly TrayIcon tray;
-    readonly NativeMenuItem miPause, miMain, miAssistant;
+    readonly NativeMenuItem miPause, miMain, miAssistant, miCards;
     readonly DispatcherTimer timer, calendarTimer, updateTimer, practiceTimer;
     AppSettings settings;
     ReminderWindow? reminder;
@@ -75,6 +77,8 @@ public sealed class AppController
         miAgenda.Click += (_, _) => OpenAgenda();
         miAssistant = new NativeMenuItem("Помощник");
         miAssistant.Click += (_, _) => OpenAssistant();
+        miCards = new NativeMenuItem("Карточки");
+        miCards.Click += (_, _) => OpenCards();
         var miExit = new NativeMenuItem("Выход");
         miExit.Click += async (_, _) => await ExitWithConfirm();
         menu.Items.Add(miShow);
@@ -82,6 +86,7 @@ public sealed class AppController
         menu.Items.Add(miMain);
         menu.Items.Add(miAgenda);
         menu.Items.Add(miAssistant);
+        menu.Items.Add(miCards);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(miExit);
         tray = new TrayIcon { Icon = Icons.Clock(Palette.Gray), ToolTipText = "Отдыхалка", Menu = menu, IsVisible = true };
@@ -151,6 +156,9 @@ public sealed class AppController
         main.SetAgendaCount(upcoming);
         main.SetAssistantVisible(settings.AiOn);
         miAssistant.IsVisible = settings.AiOn;
+        miCards.IsVisible = settings.AiOn && cards.All.Count > 0;
+        int due = settings.AiOn ? cards.DueCount(now) : 0;
+        miCards.Header = due > 0 ? $"Карточки ({due})" : "Карточки";
 
         bool idle = engine.State == WorkState.Idle, paused = engine.State == WorkState.Paused;
         tray.Icon = Icons.Clock(idle ? Palette.Gray : paused ? Palette.Amber : engine.ReminderOpen ? Palette.Red : Palette.Green);
@@ -340,7 +348,8 @@ public sealed class AppController
             assistant.Activate();
             return;
         }
-        assistant = new AssistantWindow(() => settings, memory);
+        assistant = new AssistantWindow(() => settings, memory, cards);
+        assistant.CardsRequested += () => OpenCards();
         assistant.Closed += (_, _) => assistant = null;
         assistant.PracticeEnded += (kind, minutes) =>
         {
@@ -350,17 +359,43 @@ public sealed class AppController
         assistant.Show();
     }
 
-    /// <summary>Пора позаниматься — предложение в углу экрана.</summary>
+    /// <summary>Карточки: просто повторение или (с kind) занятие по расписанию на minutes минут.</summary>
+    void OpenCards(PracticeKind? kind = null, int? minutes = null)
+    {
+        if (cardsWindow != null)
+        {
+            if (kind is { } k) coach.Abandoned(k, DateTime.Now);   // окно уже открыто — занятие не начинаем заново
+            cardsWindow.Activate();
+            return;
+        }
+        cardsWindow = new CardsWindow(cards, minutes);
+        cardsWindow.Closed += (_, _) => cardsWindow = null;
+        cardsWindow.Finished += (reviewed, mins) =>
+        {
+            if (kind is not { } k) return;
+            if (reviewed > 0) coach.Finished(k, DateTime.Now, mins);
+            else coach.Abandoned(k, DateTime.Now);
+        };
+        cardsWindow.Show();
+    }
+
+    /// <summary>Пора позаниматься — предложение в углу экрана. Днём, если накопились карточки, — их повторение.</summary>
     void OfferPractice(PracticeKind kind)
     {
         practiceOffer?.Close();
-        practiceOffer = new PracticeOfferWindow(kind, settings, platform, practiceLog.Streak(DateTime.Today));
+        int due = cards.DueCount(DateTime.Now);
+        bool useCards = kind == PracticeKind.Day && settings.PracticeCards && due >= 3;
+        practiceOffer = new PracticeOfferWindow(kind, settings, platform, practiceLog.Streak(DateTime.Today), useCards ? due : null);
         practiceOffer.Answered += async choice =>
         {
             practiceOffer = null;
             var now = DateTime.Now;
             switch (choice)
             {
+                case PracticeChoice.Start when useCards:
+                    coach.Started(kind, now);
+                    OpenCards(kind, PracticeText.Minutes(kind, settings));
+                    break;
                 case PracticeChoice.Start:
                     coach.Started(kind, now);
                     OpenAssistant();
@@ -392,7 +427,8 @@ public sealed class AppController
                          + (auto ? " · день начат автоматически" : "")
                          + (coach.PlanLine(engine.DayStart) is { } plan ? "\n" + plan : "");
         var w = new GreetingWindow(settings, engine.Meetings, DayPlan.Load(DateTime.Today), dayInfo,
-            tasks.ForDay(DateTime.Today).Where(t => !t.Done).ToList());
+            tasks.ForDay(DateTime.Today).Where(t => !t.Done).ToList(),
+            settings.AiOn ? cards.WordOfDay(DateTime.Today) : null, settings.AiOn ? cards.DueCount(DateTime.Now) : 0);
         w.Show();
         if (settings.Weather)
         {
@@ -508,6 +544,7 @@ public sealed class AppController
         updateTimer.Stop();
         practiceTimer.Stop();
         practiceOffer?.Close();
+        cardsWindow?.Close();
         updateWindow?.Close();
         assistant?.Close();
         if (endDay) engine.EndDay(DateTime.Now);

@@ -14,14 +14,16 @@ static class AssistantNotes
 {
     static bool running;
 
-    public static async Task UpdateAsync(AppSettings settings, TutorMemory memory)
+    public static async Task UpdateAsync(AppSettings settings, TutorMemory memory, CardStore cards)
     {
-        if (running || !settings.AiOn || memory.SummaryRequest(DateTime.Now) is not { } req) return;
+        if (running || !settings.AiOn || memory.SummaryRequest(DateTime.Now, cards.RecentFronts(60)) is not { } req) return;
         running = true;
         try
         {
-            var notes = await AiClients.Create(settings).CompleteAsync(req.System, new[] { req.Request });
-            memory.Notes = notes;
+            var reply = await AiClients.Create(settings).CompleteAsync(req.System, new[] { req.Request });
+            var (notes, found) = CardStore.Extract(reply);   // заметки + новые карточки из разговора
+            if (notes.Length > 0) memory.Notes = notes;
+            cards.Add(found, DateTime.Now);
             memory.MarkSummarized(req.Count);
         }
         catch { }
@@ -62,10 +64,17 @@ public sealed class AssistantWindow : Window
 
     public bool InPractice => practice != null;
 
-    public AssistantWindow(Func<AppSettings> settings, TutorMemory memory)
+    readonly CardStore cards;
+    readonly Button cardsButton = new() { Content = "Карточки" };
+
+    /// <summary>Открыть карточки (повторение и список).</summary>
+    public event Action? CardsRequested;
+
+    public AssistantWindow(Func<AppSettings> settings, TutorMemory memory, CardStore cards)
     {
         this.settings = settings;
         this.memory = memory;
+        this.cards = cards;
         Title = "Помощник";
         Icon = Icons.Clock(Palette.Green);
         Width = 620;
@@ -82,16 +91,23 @@ public sealed class AssistantWindow : Window
         ToolTip.SetTip(newButton, "Очистить переписку. Заметки о занятиях сохранятся — помощник тебя не забудет");
         newButton.Click += async (_, _) => await NewConversation();
 
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
+        ToolTip.SetTip(cardsButton, "Повторить карточки: ошибки и новые слова из разговоров");
+        cardsButton.Click += (_, _) => CardsRequested?.Invoke();
+
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto") };
         header.Children.Add(new StackPanel
         {
             Spacing = 2,
             Children = { Card.Text("Помощник", 26, Palette.Text, FontWeight.Bold), subtitle }
         });
-        Grid.SetColumn(memoryButton, 1);
+        Grid.SetColumn(cardsButton, 1);
+        cardsButton.VerticalAlignment = VerticalAlignment.Center;
+        cardsButton.Margin = new Thickness(0, 0, 8, 0);
+        header.Children.Add(cardsButton);
+        Grid.SetColumn(memoryButton, 2);
         memoryButton.VerticalAlignment = VerticalAlignment.Center;
         header.Children.Add(memoryButton);
-        Grid.SetColumn(newButton, 2);
+        Grid.SetColumn(newButton, 3);
         newButton.VerticalAlignment = VerticalAlignment.Center;
         newButton.Margin = new Thickness(8, 0, 0, 0);
         header.Children.Add(newButton);
@@ -142,9 +158,19 @@ public sealed class AssistantWindow : Window
         {
             cts?.Cancel();
             EndPractice();
-            _ = AssistantNotes.UpdateAsync(settings(), memory);   // запомнить, о чём говорили
+            cards.Changed -= UpdateCardsButton;
+            _ = AssistantNotes.UpdateAsync(settings(), memory, cards);   // запомнить, о чём говорили
         };
+        cards.Changed += UpdateCardsButton;
+        UpdateCardsButton();
         Rebuild();
+    }
+
+    void UpdateCardsButton()
+    {
+        int due = cards.DueCount(DateTime.Now);
+        cardsButton.Content = due > 0 ? $"Карточки ({due})" : "Карточки";
+        cardsButton.IsVisible = cards.All.Count > 0;
     }
 
     /// <summary>Перерисовать переписку (и подпись с подключением — его могли поменять в настройках).</summary>
@@ -198,9 +224,14 @@ public sealed class AssistantWindow : Window
         {
             var client = AiClients.Create(s);
             var reply = await client.CompleteAsync(system, AiClients.ForModel(memory.Chat), cts.Token);
-            memory.Add(new ChatMessage(false, reply, DateTime.Now));
+            // карточки, которые помощник сделал по просьбе, — сразу в повторение, а блок из текста убираем
+            var (shown, found) = CardStore.Extract(reply);
+            int added = cards.Add(found, DateTime.Now);
+            if (added > 0) shown = (shown.Length > 0 ? shown + "\n\n" : "") + $"＋ {GreetingWindow.Plural(added, "карточка", "карточки", "карточек")} в повторении";
+            else if (shown.Length == 0) shown = found.Count > 0 ? "Такие карточки уже есть." : reply;
+            memory.Add(new ChatMessage(false, shown, DateTime.Now));
             RemoveTyping();
-            list.Children.Add(Bubble(reply, false));
+            list.Children.Add(Bubble(shown, false));
         }
         catch (OperationCanceledException) { return; }   // окно закрыли
         catch (Exception e)
@@ -286,7 +317,7 @@ public sealed class AssistantWindow : Window
         if (!await ConfirmDialog.Ask(this, "Начать новый разговор? Переписка очистится, но помощник сохранит заметки о ней.")) return;
         var s = settings();
         subtitle.Text = "Запоминаю разговор…";
-        await AssistantNotes.UpdateAsync(s, memory);
+        await AssistantNotes.UpdateAsync(s, memory, cards);
         memory.ClearChat();
         Rebuild();
         input.Focus();
@@ -429,9 +460,11 @@ public sealed class PracticeOfferWindow : Window
 
     public event Action<PracticeChoice>? Answered;
 
-    public PracticeOfferWindow(PracticeKind kind, AppSettings s, IPlatform platform, int streak)
+    /// <param name="cardsDue">Не null — вместо занятия с помощником повторение карточек (столько к повторению).</param>
+    public PracticeOfferWindow(PracticeKind kind, AppSettings s, IPlatform platform, int streak, int? cardsDue = null)
     {
-        Title = PracticeText.Title(kind);
+        string title = cardsDue != null ? "Повторение карточек" : PracticeText.Title(kind);
+        Title = title;
         Icon = Icons.Clock(Palette.Blue);
         SystemDecorations = SystemDecorations.None;
         Topmost = true;
@@ -444,7 +477,8 @@ public sealed class PracticeOfferWindow : Window
         Opacity = 0;
 
         int minutes = PracticeText.Minutes(kind, s);
-        string hint = kind switch
+        string hint = cardsDue is { } due ? $"{GreetingWindow.Plural(due, "карточка ждёт", "карточки ждут", "карточек ждут")} повторения — быстро, без ожидания ответов."
+            : kind switch
         {
             PracticeKind.Morning => "Пара лёгких заданий на повторение — и за работу.",
             PracticeKind.Day => "Несколько быстрых заданий на то, что путается.",
@@ -470,8 +504,8 @@ public sealed class PracticeOfferWindow : Window
             Spacing = 2,
             Children =
             {
-                Card.Text($"{minutes} мин · помощник" + (streak > 0 ? $" · серия {streak} дн." : ""), 13, Palette.Muted),
-                Card.Text(PracticeText.Title(kind), 21, Palette.Text, FontWeight.Bold),
+                Card.Text($"{minutes} мин · " + (cardsDue != null ? "карточки" : "помощник") + (streak > 0 ? $" · серия {streak} дн." : ""), 13, Palette.Muted),
+                Card.Text(title, 21, Palette.Text, FontWeight.Bold),
                 Card.Text(hint, 13.5, Palette.Text),
                 buttons
             }

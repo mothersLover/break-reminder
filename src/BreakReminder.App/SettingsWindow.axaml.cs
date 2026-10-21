@@ -191,6 +191,7 @@ public partial class SettingsWindow : Window
         PracticeMorningNum.Value = s.PracticeMorningMin;
         PracticeDayCountNum.Value = s.PracticeDayCount;
         PracticeDayMinNum.Value = s.PracticeDayMin;
+        PracticeCardsCheck.IsChecked = s.PracticeCards;
         PracticeEveningCheck.IsChecked = s.PracticeEvening;
         PracticeEveningPicker.SelectedTime = TimeSpan.FromMinutes(s.PracticeEveningAt);
         PracticeEveningNum.Value = s.PracticeEveningMin;
@@ -428,7 +429,7 @@ public partial class SettingsWindow : Window
         bool practice = PracticeCheck.IsChecked == true;
         PracticeMorningCheck.IsEnabled = PracticeEveningCheck.IsEnabled = PracticeDayCountNum.IsEnabled = practice;
         PracticeMorningNum.IsEnabled = practice && PracticeMorningCheck.IsChecked == true;
-        PracticeDayMinNum.IsEnabled = practice && N(PracticeDayCountNum, 0) > 0;
+        PracticeDayMinNum.IsEnabled = PracticeCardsCheck.IsEnabled = practice && N(PracticeDayCountNum, 0) > 0;
         PracticeEveningPicker.IsEnabled = PracticeEveningNum.IsEnabled = practice && PracticeEveningCheck.IsChecked == true;
 
         EyeEveryNum.IsEnabled = EyeSecondsNum.IsEnabled = EyeCheck.IsChecked == true;
@@ -529,6 +530,7 @@ public partial class SettingsWindow : Window
         s.PracticeMorningMin = N(PracticeMorningNum, s.PracticeMorningMin);
         s.PracticeDayCount = N(PracticeDayCountNum, s.PracticeDayCount);
         s.PracticeDayMin = N(PracticeDayMinNum, s.PracticeDayMin);
+        s.PracticeCards = PracticeCardsCheck.IsChecked == true;
         s.PracticeEvening = PracticeEveningCheck.IsChecked == true;
         s.PracticeEveningAt = Minutes(PracticeEveningPicker, s.PracticeEveningAt);
         s.PracticeEveningMin = N(PracticeEveningNum, s.PracticeEveningMin);

@@ -98,6 +98,7 @@ public sealed class AppSettings
     public int PracticeMorningMin = 5;
     public int PracticeDayCount = 2;         // мини-тренировок за рабочий день (0 — не надо)
     public int PracticeDayMin = 3;
+    public bool PracticeCards = true;        // днём — повторение карточек, если накопились
     public bool PracticeEvening = true;      // вечернее занятие
     public int PracticeEveningAt = 20 * 60;  // 20:00
     public int PracticeEveningMin = 15;
@@ -201,6 +202,7 @@ public sealed class AppSettings
             s.PracticeMorningMin = Int(d, "PracticeMorningMin", s.PracticeMorningMin, 1, 60);
             s.PracticeDayCount = Int(d, "PracticeDayCount", s.PracticeDayCount, 0, 6);
             s.PracticeDayMin = Int(d, "PracticeDayMin", s.PracticeDayMin, 1, 30);
+            s.PracticeCards = Bool(d, "PracticeCards", s.PracticeCards);
             s.PracticeEvening = Bool(d, "PracticeEvening", s.PracticeEvening);
             s.PracticeEveningAt = Int(d, "PracticeEveningAt", s.PracticeEveningAt, 0, 24 * 60 - 1);
             s.PracticeEveningMin = Int(d, "PracticeEveningMin", s.PracticeEveningMin, 1, 120);
@@ -308,6 +310,7 @@ public sealed class AppSettings
             W("PracticeMorningMin", PracticeMorningMin);
             W("PracticeDayCount", PracticeDayCount);
             W("PracticeDayMin", PracticeDayMin);
+            B("PracticeCards", PracticeCards);
             B("PracticeEvening", PracticeEvening);
             W("PracticeEveningAt", PracticeEveningAt);
             W("PracticeEveningMin", PracticeEveningMin);
