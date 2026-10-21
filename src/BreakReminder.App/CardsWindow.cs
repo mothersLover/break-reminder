@@ -73,7 +73,7 @@ public sealed class CardsWindow : Window
         header.Children.Add(new StackPanel { Spacing = 2, Children = { Card.Text("Карточки", 26, Palette.Text, FontWeight.Bold), subtitle } });
         Grid.SetColumn(modeButton, 1);
         header.Children.Add(modeButton);
-        modeButton.Click += (_, _) => SetMode(body.Content == reviewPane ? listPane : reviewPane);
+        modeButton.Click += (_, _) => SetMode(body.Content == reviewPane ? listPane! : reviewPane!);
 
         timerBar = new Border
         {
@@ -102,8 +102,8 @@ public sealed class CardsWindow : Window
         AddHandler(KeyDownEvent, (_, e) =>
         {
             if (body.Content != reviewPane || current == null) return;
-            if (!shown && e.Key == Key.Enter) { e.Handled = true; Show(); return; }
-            if (!shown && e.Key == Key.Space && !answer.IsFocused) { e.Handled = true; Show(); return; }
+            if (!shown && e.Key == Key.Enter) { e.Handled = true; RevealAnswer(); return; }
+            if (!shown && e.Key == Key.Space && !answer.IsFocused) { e.Handled = true; RevealAnswer(); return; }
             if (shown && e.Key is >= Key.D1 and <= Key.D4) { e.Handled = true; Rate((Grade)(e.Key - Key.D1)); }
             if (shown && e.Key is >= Key.NumPad1 and <= Key.NumPad4) { e.Handled = true; Rate((Grade)(e.Key - Key.NumPad1)); }
         }, RoutingStrategies.Tunnel);
@@ -162,8 +162,8 @@ public sealed class CardsWindow : Window
 
     Control BuildReview()
     {
-        showButton.Click += (_, _) => Show();
-        answer.KeyDown += (_, e) => { if (e.Key == Key.Enter && !shown) { e.Handled = true; Show(); } };
+        showButton.Click += (_, _) => RevealAnswer();
+        answer.KeyDown += (_, e) => { if (e.Key == Key.Enter && !shown) { e.Handled = true; RevealAnswer(); } };
 
         var labels = new[] { ("Не помню", Palette.Red), ("Трудно", Palette.Amber), ("Помню", Palette.Green), ("Легко", Palette.Blue) };
         for (int i = 0; i < 4; i++)
@@ -236,7 +236,7 @@ public sealed class CardsWindow : Window
         UpdateSubtitle();
     }
 
-    void Show()
+    void RevealAnswer()
     {
         if (current == null || shown) return;
         shown = true;

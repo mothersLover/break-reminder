@@ -29,6 +29,9 @@ public sealed class TutorMemory
 
     string FilePath(string name) => Path.Combine(dir, name);
 
+    /// <summary>Папка для приложенных к разговору фото (очищается вместе с перепиской).</summary>
+    public string ImagesDir => Path.Combine(dir, "images");
+
     public string Profile
     {
         get => profile;
@@ -65,6 +68,7 @@ public sealed class TutorMemory
         chat.Clear();
         summarized = 0;
         SaveChat();
+        try { if (Directory.Exists(ImagesDir)) Directory.Delete(ImagesDir, true); } catch { }
     }
 
     /// <summary>«Забыть всё»: профиль, заметки, разговор.</summary>
@@ -145,7 +149,7 @@ public sealed class TutorMemory
         var known = knownCards?.ToList() ?? new();
         if (known.Count > 0) sb.AppendLine("<уже есть карточки>").AppendLine(string.Join("\n", known)).AppendLine("</уже есть карточки>").AppendLine();
         sb.AppendLine("<новый разговор>");
-        foreach (var m in fresh) sb.Append(m.IsUser ? "Человек: " : "Помощник: ").AppendLine(m.Text.Trim()).AppendLine();
+        foreach (var m in fresh) sb.Append(m.IsUser ? "Человек: " : "Помощник: ").Append(AiImages.Mark(m)).AppendLine(m.Text.Trim()).AppendLine();
         sb.AppendLine("</новый разговор>");
 
         return (system, new ChatMessage(true, sb.ToString(), now), count);

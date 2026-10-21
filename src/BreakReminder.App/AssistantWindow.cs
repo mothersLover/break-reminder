@@ -4,6 +4,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using BreakReminder.Core;
 
@@ -67,6 +69,13 @@ public sealed class AssistantWindow : Window
     readonly CardStore cards;
     readonly Button cardsButton = new() { Content = "Карточки" };
 
+    // ---- фото к сообщению ----
+    readonly List<string> pending = new();          // подготовленные фото, ещё не отправленные
+    readonly WrapPanel pendingStrip = new() { Margin = new Thickness(0, 0, 0, 8), IsVisible = false };
+    readonly Button attach = new() { Content = "📎", FontSize = 18, VerticalAlignment = VerticalAlignment.Stretch,
+        VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 0) };
+    readonly Border homeworkRow;
+
     /// <summary>Открыть карточки (повторение и список).</summary>
     public event Action? CardsRequested;
 
@@ -128,9 +137,39 @@ public sealed class AssistantWindow : Window
         bannerButton.Click += async (_, _) => await FinishPractice();
         practiceTimer.Tick += (_, _) => UpdateBanner();
 
-        var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var homework = new Button { Content = "📚 Сел за домашку", Classes = { "link" }, FontSize = 14 };
+        homework.Click += async (_, _) => await StartPractice(PracticeKind.Homework, 0);
+        homeworkRow = new Border
+        {
+            Margin = new Thickness(0, 12, 0, 0),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal, Spacing = 10,
+                Children = { homework, Card.Text("пришли фото задания — проверю по шагам", 12.5, Palette.Muted).WithMargin(0, 1, 0, 0) }
+            }
+        };
+
+        // 📎 — выбрать фото; можно и перетащить файлы в окно
+        ToolTip.SetTip(attach, "Приложить фото (страница учебника, тетрадь). Можно перетащить файл в окно");
+        attach.Click += async (_, _) => await PickImages();
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.Data.Contains(DataFormats.Files) ? DragDropEffects.Copy : DragDropEffects.None);
+        AddHandler(DragDrop.DropEvent, (_, e) =>
+        {
+            var files = e.Data.GetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
+            if (files is { Count: > 0 }) AddImages(files);
+        });
+
+        var bottom = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto"), RowDefinitions = new RowDefinitions("Auto,Auto") };
+        Grid.SetColumnSpan(pendingStrip, 3);
+        bottom.Children.Add(pendingStrip);
+        Grid.SetRow(attach, 1);
+        bottom.Children.Add(attach);
+        Grid.SetRow(input, 1);
+        Grid.SetColumn(input, 1);
         bottom.Children.Add(input);
-        Grid.SetColumn(send, 1);
+        Grid.SetRow(send, 1);
+        Grid.SetColumn(send, 2);
         bottom.Children.Add(send);
         send.Click += async (_, _) => await Send();
         // Enter — отправить, Shift+Enter — перенос строки (перехватываем до TextBox)
@@ -147,6 +186,8 @@ public sealed class AssistantWindow : Window
         root.Children.Add(header);
         Grid.SetRow(banner, 1);
         root.Children.Add(banner);
+        Grid.SetRow(homeworkRow, 1);
+        root.Children.Add(homeworkRow);
         Grid.SetRow(scroll, 2);
         root.Children.Add(scroll);
         Grid.SetRow(bottom, 3);
@@ -179,7 +220,7 @@ public sealed class AssistantWindow : Window
         subtitle.Text = AiClients.Describe(settings());
         list.Children.Clear();
         if (memory.Chat.Count == 0) list.Children.Add(Bubble(Welcome(), false));
-        foreach (var m in memory.Chat) list.Children.Add(Bubble(m.Text, m.IsUser));
+        foreach (var m in memory.Chat) list.Children.Add(Bubble(m.Text, m.IsUser, images: m.Images));
         ScrollToEnd();
     }
 
@@ -198,21 +239,25 @@ public sealed class AssistantWindow : Window
     async Task Send()
     {
         var text = (input.Text ?? "").Trim();
-        if (text.Length == 0 || cts != null) return;
+        if ((text.Length == 0 && pending.Count == 0) || cts != null) return;
         input.Text = "";
         if (practice != null) practiceAnswered = true;
-        await SendText(text);
+        var images = pending.ToList();
+        pending.Clear();
+        RefreshPending();
+        await SendText(text, images: images);
     }
 
     /// <summary>Отправить сообщение от имени человека; extra — дополнительные указания помощнику на этот запрос.</summary>
-    async Task SendText(string text, string? extra = null)
+    async Task SendText(string text, string? extra = null, IReadOnlyList<string>? images = null)
     {
         while (cts != null) await Task.Delay(200);           // дождаться прошлого ответа
         if (memory.Chat.Count == 0) list.Children.Clear();  // убрать приветствие
 
         var s = settings();
-        memory.Add(new ChatMessage(true, text, DateTime.Now));
-        list.Children.Add(Bubble(text, true));
+        if (images is { Count: 0 }) images = null;
+        memory.Add(new ChatMessage(true, text, DateTime.Now, Images: images));
+        list.Children.Add(Bubble(text, true, images: images));
         SetBusy(true);
 
         string system = memory.SystemPrompt(s, DateTime.Now);
@@ -264,13 +309,30 @@ public sealed class AssistantWindow : Window
         banner.IsVisible = true;
         UpdateBanner();
         practiceTimer.Start();
-        await SendText($"▶ {PracticeText.Title(kind)} · {minutes} мин", "Начни занятие сразу с первого задания.");
+        if (kind == PracticeKind.Homework)
+        {
+            // фото, которые уже приложены, уходят вместе с началом домашки
+            var images = pending.ToList();
+            pending.Clear();
+            RefreshPending();
+            practiceAnswered = images.Count > 0;
+            await SendText("📚 Сел за домашнее задание", "Начни: коротко попроси прислать задание и свои ответы (если их ещё нет).", images);
+        }
+        else
+            await SendText($"▶ {PracticeText.Title(kind)} · {minutes} мин", "Начни занятие сразу с первого задания.");
         input.Focus();
     }
 
     void UpdateBanner()
     {
         if (practice is not { } kind) return;
+        homeworkRow.IsVisible = false;
+        if (practiceMinutes == 0)
+        {
+            bannerText.Text = $"{PracticeText.Title(kind)} · идёт {Format.Ms(DateTime.Now - practiceStart)}";
+            bannerButton.Content = "Закончить и подвести итог";
+            return;
+        }
         var left = practiceEnd - DateTime.Now;
         if (left > TimeSpan.Zero)
         {
@@ -306,8 +368,10 @@ public sealed class AssistantWindow : Window
         practice = null;
         practiceTimer.Stop();
         banner.IsVisible = false;
+        homeworkRow.IsVisible = true;
         var elapsed = DateTime.Now - practiceStart;
-        int minutes = practiceAnswered ? Math.Clamp((int)Math.Round(elapsed.TotalMinutes), 1, practiceMinutes * 3) : 0;
+        int cap = practiceMinutes > 0 ? practiceMinutes * 3 : 240;
+        int minutes = practiceAnswered ? Math.Clamp((int)Math.Round(elapsed.TotalMinutes), 1, cap) : 0;
         PracticeEnded?.Invoke(kind, minutes);
     }
 
@@ -342,20 +406,106 @@ public sealed class AssistantWindow : Window
 
     void ScrollToEnd() => Dispatcher.UIThread.Post(() => scroll.ScrollToEnd(), DispatcherPriority.Background);
 
-    static Control Bubble(string text, bool user, bool muted = false) => new Border
+    static Control Bubble(string text, bool user, bool muted = false, IReadOnlyList<string>? images = null)
     {
-        Background = Palette.B(user ? Color.Parse("#2D4A63") : Palette.Card),
-        CornerRadius = new CornerRadius(10),
-        Padding = new Thickness(14, 10),
-        MaxWidth = 470,
-        HorizontalAlignment = user ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-        Child = new SelectableTextBlock
+        var panel = new StackPanel { Spacing = 8 };
+        if (images is { Count: > 0 })
         {
-            Text = text, FontSize = 14, TextWrapping = TextWrapping.Wrap,
-            Foreground = Palette.B(muted ? Palette.Muted : Palette.Text),
-            FontStyle = muted ? FontStyle.Italic : FontStyle.Normal
+            var strip = new WrapPanel();
+            foreach (var path in images) strip.Children.Add(Thumb(path, 150));
+            panel.Children.Add(strip);
         }
-    };
+        if (text.Length > 0)
+            panel.Children.Add(new SelectableTextBlock
+            {
+                Text = text, FontSize = 14, TextWrapping = TextWrapping.Wrap,
+                Foreground = Palette.B(muted ? Palette.Muted : Palette.Text),
+                FontStyle = muted ? FontStyle.Italic : FontStyle.Normal
+            });
+        return new Border
+        {
+            Background = Palette.B(user ? Color.Parse("#2D4A63") : Palette.Card),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(14, 10),
+            MaxWidth = 470,
+            HorizontalAlignment = user ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+            Child = panel
+        };
+    }
+
+    /// <summary>Миниатюра фото (если файла уже нет — подпись).</summary>
+    static Control Thumb(string path, int height)
+    {
+        try
+        {
+            using var f = File.OpenRead(path);
+            return new Image
+            {
+                Source = Bitmap.DecodeToHeight(f, height * 2), Height = height, Stretch = Stretch.Uniform,
+                Margin = new Thickness(0, 0, 6, 6), HorizontalAlignment = HorizontalAlignment.Left
+            };
+        }
+        catch
+        {
+            return Card.Text("[фото: " + Path.GetFileName(path) + "]", 12.5, Palette.Muted);
+        }
+    }
+
+    // ---------- фото ----------
+
+    async Task PickImages()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Фото задания",
+            AllowMultiple = true,
+            FileTypeFilter = new[] { new FilePickerFileType("Фото") { Patterns = AiImages.Extensions.Select(e => "*" + e).ToArray() } }
+        });
+        AddImages(files.Select(f => f.TryGetLocalPath()).OfType<string>().ToList());
+    }
+
+    const int MaxImages = 4;
+
+    void AddImages(IReadOnlyList<string> paths)
+    {
+        var errors = new List<string>();
+        foreach (var path in paths)
+        {
+            if (pending.Count >= MaxImages) { errors.Add($"Не больше {MaxImages} фото за раз."); break; }
+            try { pending.Add(ImagePrep.Prepare(path, memory.ImagesDir)); }
+            catch (Exception e) { errors.Add(e.Message); }
+        }
+        RefreshPending();
+        if (errors.Count > 0) list.Children.Add(ErrorBubble(string.Join("\n", errors.Distinct())));
+        ScrollToEnd();
+        input.Focus();
+    }
+
+    void RefreshPending()
+    {
+        pendingStrip.Children.Clear();
+        foreach (var path in pending)
+        {
+            var remove = new Button
+            {
+                Content = "✕", FontSize = 11, Padding = new Thickness(5, 1), Background = Palette.B(Palette.Gray),
+                HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top
+            };
+            ToolTip.SetTip(remove, "Убрать фото");
+            string p = path;
+            remove.Click += (_, _) =>
+            {
+                pending.Remove(p);
+                try { File.Delete(p); } catch { }
+                RefreshPending();
+            };
+            pendingStrip.Children.Add(new Panel { Margin = new Thickness(0, 0, 8, 0), Children = { Thumb(path, 64), remove } });
+        }
+        pendingStrip.IsVisible = pending.Count > 0;
+        input.Watermark = pending.Count > 0
+            ? "Добавь пояснение к фото (необязательно) и нажми Enter"
+            : "Напиши вопрос или своё решение…  (Enter — отправить, Shift+Enter — новая строка)";
+    }
 
     static Control ErrorBubble(string text) => new Border
     {
@@ -546,5 +696,55 @@ public sealed class PracticeOfferWindow : Window
         answered = true;
         Answered?.Invoke(c);
         Close();
+    }
+}
+
+/// <summary>
+/// Подготовка фото для помощника: копия в папку разговора; большие (больше ~3,5 МБ или 2000 пикселей по стороне)
+/// уменьшаются — сервисы ИИ не принимают слишком большие картинки, а лишние пиксели только тратят лимиты.
+/// </summary>
+static class ImagePrep
+{
+    const long MaxBytes = 3_500_000;
+    const int MaxSide = 2000, TargetSide = 1568;
+
+    public static string Prepare(string source, string dir)
+    {
+        string ext = Path.GetExtension(source).ToLowerInvariant();
+        if (!AiImages.Extensions.Contains(ext)) throw new AiException($"«{Path.GetFileName(source)}» — не фото. Подходят JPG, PNG, WEBP, GIF.");
+        Directory.CreateDirectory(dir);
+        string name = DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..6];
+
+        Bitmap bmp;
+        try
+        {
+            using var f = File.OpenRead(source);
+            bmp = new Bitmap(f);
+        }
+        catch { throw new AiException($"Не получилось открыть «{Path.GetFileName(source)}» как картинку."); }
+
+        using (bmp)
+        {
+            var size = bmp.PixelSize;
+            if (new FileInfo(source).Length <= MaxBytes && Math.Max(size.Width, size.Height) <= MaxSide)
+            {
+                string copy = Path.Combine(dir, name + ext);
+                File.Copy(source, copy);
+                return copy;
+            }
+            // уменьшаем (PNG), пока не влезет в лимит
+            int side = TargetSide;
+            for (int attempt = 0; attempt < 4; attempt++, side = side * 3 / 4)
+            {
+                double k = Math.Min(1.0, (double)side / Math.Max(size.Width, size.Height));
+                var target = new PixelSize(Math.Max(1, (int)(size.Width * k)), Math.Max(1, (int)(size.Height * k)));
+                using var scaled = bmp.CreateScaledBitmap(target, BitmapInterpolationMode.HighQuality);
+                string png = Path.Combine(dir, name + ".png");
+                scaled.Save(png);
+                if (new FileInfo(png).Length <= MaxBytes) return png;
+                File.Delete(png);
+            }
+            throw new AiException($"Фото «{Path.GetFileName(source)}» слишком большое даже после уменьшения.");
+        }
     }
 }

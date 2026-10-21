@@ -3,8 +3,8 @@ using System.Text;
 
 namespace BreakReminder.Core;
 
-/// <summary>Вид занятия с помощником.</summary>
-public enum PracticeKind { Morning, Day, Evening }
+/// <summary>Вид занятия с помощником. Homework — «Сел за домашку» (по кнопке, не по расписанию).</summary>
+public enum PracticeKind { Morning, Day, Evening, Homework }
 
 public static class PracticeText
 {
@@ -12,6 +12,7 @@ public static class PracticeText
     {
         PracticeKind.Morning => "Утренняя разминка",
         PracticeKind.Day => "Мини-тренировка",
+        PracticeKind.Homework => "Домашнее задание",
         _ => "Вечернее занятие"
     };
 
@@ -19,11 +20,19 @@ public static class PracticeText
     {
         PracticeKind.Morning => s.PracticeMorningMin,
         PracticeKind.Day => s.PracticeDayMin,
+        PracticeKind.Homework => 0,   // без ограничения по времени
         _ => s.PracticeEveningMin
     };
 
+    const string HomeworkInstructions =
+        "Сейчас человек делает домашнее задание. Если задание ещё не прислано — попроси прислать его: фото страницы " +
+        "учебника или тетради либо текст, и свои ответы. Разбирай по одному упражнению: найди ошибки и проверь по правилам выше " +
+        "(сначала подсказка, если так настроено), задавай встречные вопросы, чтобы проверить понимание. Не решай задание " +
+        "за человека целиком — помогай дойти самому. Если на фото плохо видно — так и скажи и попроси переснять. " +
+        "Когда человек попросит подвести итог — 2–4 строки: что сделано, где ошибался, что повторить.";
+
     /// <summary>Что попросить у помощника на этом занятии (добавляется к инструкциям).</summary>
-    public static string Instructions(PracticeKind k, int minutes) =>
+    public static string Instructions(PracticeKind k, int minutes) => k == PracticeKind.Homework ? HomeworkInstructions :
         (k switch
         {
             PracticeKind.Morning =>

@@ -13,8 +13,37 @@ namespace BreakReminder.Core;
 /// <summary>Через что работает ИИ-помощник.</summary>
 public enum AiProvider { ClaudeCode, Anthropic, OpenAi, Ollama }
 
-/// <summary>Сообщение в разговоре с помощником. Local — служебное (приветствие, ошибка): модели не отправляется.</summary>
-public sealed record ChatMessage(bool IsUser, string Text, DateTime At, bool Local = false);
+/// <summary>
+/// Сообщение в разговоре с помощником. Local — служебное (приветствие, ошибка): модели не отправляется.
+/// Images — пути к приложенным фото (страница учебника, тетрадь).
+/// </summary>
+public sealed record ChatMessage(bool IsUser, string Text, DateTime At, bool Local = false, IReadOnlyList<string>? Images = null)
+{
+    public bool HasImages => Images is { Count: > 0 };
+}
+
+/// <summary>Фото для помощника: тип файла и содержимое в base64.</summary>
+public static class AiImages
+{
+    public static readonly string[] Extensions = { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
+
+    public static string MediaType(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        _ => "image/png"
+    };
+
+    public static string Base64(string path)
+    {
+        try { return Convert.ToBase64String(File.ReadAllBytes(path)); }
+        catch (Exception e) { throw new AiException($"Не получилось прочитать фото {Path.GetFileName(path)}: {e.Message}"); }
+    }
+
+    /// <summary>Подпись вместо фото — там, где картинку не передать (заметки, старые сообщения).</summary>
+    public static string Mark(ChatMessage m) => m.HasImages ? $"[приложено фото: {m.Images!.Count}] " : "";
+}
 
 /// <summary>Понятная человеку ошибка ИИ (нет ключа, нет входа, сервис не ответил…).</summary>
 public sealed class AiException(string message) : Exception(message);
@@ -62,20 +91,33 @@ public static class AiClients
 
     /// <summary>
     /// Сообщения для модели: без служебных, начиная с сообщения человека, подряд идущие от одного автора склеены
-    /// (после ошибки человек мог написать ещё раз), не больше max последних.
+    /// (после ошибки человек мог написать ещё раз), не больше max последних. Фото отправляются только из
+    /// keepImages последних сообщений с фото — старые заменяются пометкой, чтобы не платить за них снова и снова.
     /// </summary>
-    public static List<ChatMessage> ForModel(IEnumerable<ChatMessage> chat, int max = 40)
+    public static List<ChatMessage> ForModel(IEnumerable<ChatMessage> chat, int max = 40, int keepImages = 2)
     {
         var list = new List<ChatMessage>();
-        foreach (var m in chat.Where(m => !m.Local && m.Text.Trim().Length > 0))
+        foreach (var m in chat.Where(m => !m.Local && (m.Text.Trim().Length > 0 || m.HasImages)))
         {
             if (list.Count > 0 && list[^1].IsUser == m.IsUser)
-                list[^1] = list[^1] with { Text = list[^1].Text + "\n\n" + m.Text, At = m.At };
+            {
+                var prev = list[^1];
+                var images = (prev.Images ?? Array.Empty<string>()).Concat(m.Images ?? Array.Empty<string>()).ToList();
+                list[^1] = prev with { Text = (prev.Text + "\n\n" + m.Text).Trim(), At = m.At, Images = images.Count > 0 ? images : null };
+            }
             else
                 list.Add(m);
         }
         if (list.Count > max) list = list.GetRange(list.Count - max, max);
         while (list.Count > 0 && !list[0].IsUser) list.RemoveAt(0);
+
+        int seen = 0;
+        for (int i = list.Count - 1; i >= 0; i--)
+        {
+            if (!list[i].HasImages) continue;
+            if (++seen > keepImages)
+                list[i] = list[i] with { Text = (AiImages.Mark(list[i]) + list[i].Text).Trim(), Images = null };
+        }
         return list;
     }
 
@@ -85,11 +127,12 @@ public static class AiClients
 }
 
 /// <summary>Claude через Anthropic API (официальный SDK).</summary>
-public sealed class AnthropicAiClient(string apiKey, string model) : IAiClient
+public sealed class AnthropicAiClient(string apiKey, string model, string? baseUrl = null) : IAiClient
 {
     public async Task<string> CompleteAsync(string system, IReadOnlyList<ChatMessage> messages, CancellationToken ct = default)
     {
-        var client = new AnthropicClient { ApiKey = apiKey };
+        // baseUrl — только для тестов (поддельный сервер)
+        var client = baseUrl == null ? new AnthropicClient { ApiKey = apiKey } : new AnthropicClient { ApiKey = apiKey, BaseUrl = baseUrl };
         try
         {
             var response = await client.Messages.Create(new MessageCreateParams
@@ -97,7 +140,7 @@ public sealed class AnthropicAiClient(string apiKey, string model) : IAiClient
                 Model = model,
                 MaxTokens = 16000,
                 System = system,
-                Messages = messages.Select(m => new MessageParam { Role = m.IsUser ? Role.User : Role.Assistant, Content = m.Text }).ToList()
+                Messages = messages.Select(ToParam).ToList()
             }, ct).ConfigureAwait(false);
             if (response.StopReason == "refusal") throw new AiException("Модель отказалась отвечать на это сообщение.");
             var text = string.Join("\n", response.Content.Select(b => b.Value).OfType<TextBlock>().Select(t => t.Text)).Trim();
@@ -111,6 +154,18 @@ public sealed class AnthropicAiClient(string apiKey, string model) : IAiClient
         catch (AnthropicIOException) { throw new AiException("Нет связи с Anthropic."); }
         catch (AnthropicApiException e) { throw new AiException("Anthropic ответил ошибкой: " + e.Message); }
     }
+
+    /// <summary>Сообщение для API: с фото — фото первыми, потом текст (так модель лучше их читает).</summary>
+    static MessageParam ToParam(ChatMessage m)
+    {
+        var role = m.IsUser ? Role.User : Role.Assistant;
+        if (!m.HasImages) return new MessageParam { Role = role, Content = m.Text };
+        var blocks = new List<ContentBlockParam>();
+        foreach (var path in m.Images!)
+            blocks.Add(new ImageBlockParam { Source = new Base64ImageSource { Data = AiImages.Base64(path), MediaType = AiImages.MediaType(path) } });
+        blocks.Add(new TextBlockParam { Text = m.Text.Length > 0 ? m.Text : "Посмотри фото." });
+        return new MessageParam { Role = role, Content = blocks };
+    }
 }
 
 /// <summary>Любой сервис с OpenAI-совместимым API (/chat/completions): OpenAI, OpenRouter, DeepSeek, Ollama, LM Studio…</summary>
@@ -121,7 +176,7 @@ public sealed class OpenAiCompatClient(string baseUrl, string apiKey, string mod
     public async Task<string> CompleteAsync(string system, IReadOnlyList<ChatMessage> messages, CancellationToken ct = default)
     {
         var msgs = new JsonArray { new JsonObject { ["role"] = "system", ["content"] = system } };
-        foreach (var m in messages) msgs.Add(new JsonObject { ["role"] = m.IsUser ? "user" : "assistant", ["content"] = m.Text });
+        foreach (var m in messages) msgs.Add(new JsonObject { ["role"] = m.IsUser ? "user" : "assistant", ["content"] = Content(m) });
         var body = new JsonObject { ["model"] = model, ["messages"] = msgs };
 
         using var req = new HttpRequestMessage(HttpMethod.Post, baseUrl.TrimEnd('/') + "/chat/completions")
@@ -152,6 +207,21 @@ public sealed class OpenAiCompatClient(string baseUrl, string apiKey, string mod
             }
             return ParseReply(json);
         }
+    }
+
+    /// <summary>Содержимое сообщения: строка или (с фото) массив частей text + image_url с data:-ссылкой.</summary>
+    static JsonNode Content(ChatMessage m)
+    {
+        if (!m.HasImages) return JsonValue.Create(m.Text)!;
+        var parts = new JsonArray();
+        foreach (var path in m.Images!)
+            parts.Add(new JsonObject
+            {
+                ["type"] = "image_url",
+                ["image_url"] = new JsonObject { ["url"] = $"data:{AiImages.MediaType(path)};base64,{AiImages.Base64(path)}" }
+            });
+        parts.Add(new JsonObject { ["type"] = "text", ["text"] = m.Text.Length > 0 ? m.Text : "Посмотри фото." });
+        return parts;
     }
 
     /// <summary>Текст ответа из choices[0].message.content.</summary>
@@ -237,7 +307,8 @@ public sealed class ClaudeCodeClient(string customPath, string model, string? wo
         }
         else psi.FileName = exe;
         if (psi.FileName != exe) psi.ArgumentList.Add(exe);
-        foreach (var a in Arguments(model)) psi.ArgumentList.Add(a);
+        var imageDirs = messages.Where(m => m.HasImages).SelectMany(m => m.Images!).Select(Path.GetDirectoryName).OfType<string>().Distinct().ToList();
+        foreach (var a in Arguments(model, imageDirs)) psi.ArgumentList.Add(a);
 
         using var p = new Process { StartInfo = psi };
         try { p.Start(); }
@@ -262,14 +333,24 @@ public sealed class ClaudeCodeClient(string customPath, string model, string? wo
         }
     }
 
-    /// <summary>Аргументы запуска: один ответ в JSON, без инструментов, без сохранения сессии.</summary>
-    public static List<string> Arguments(string model)
+    /// <summary>
+    /// Аргументы запуска: один ответ в JSON, без сохранения сессии. Инструментов нет; если есть фото —
+    /// только чтение файлов (Read) и только в папках с фото.
+    /// </summary>
+    public static List<string> Arguments(string model, IReadOnlyList<string>? imageDirs = null)
     {
+        bool images = imageDirs is { Count: > 0 };
         var args = new List<string>
         {
-            "-p", "--output-format", "json", "--tools", "", "--no-session-persistence",
+            "-p", "--output-format", "json", "--tools", images ? "Read" : "", "--no-session-persistence",
             "--system-prompt", "Ты — помощник по учёбе, хобби и привычкам. Следуй инструкциям в сообщении."
         };
+        if (images)
+        {
+            args.Add("--allowedTools");
+            args.Add("Read");
+            foreach (var d in imageDirs!) { args.Add("--add-dir"); args.Add(d); }
+        }
         if (!string.IsNullOrWhiteSpace(model)) { args.Add("--model"); args.Add(model.Trim()); }
         return args;
     }
@@ -283,13 +364,17 @@ public sealed class ClaudeCodeClient(string customPath, string model, string? wo
         {
             sb.AppendLine("<разговор>");
             foreach (var m in messages.Take(messages.Count - 1))
-                sb.Append(m.IsUser ? "Человек: " : "Помощник: ").AppendLine(m.Text.Trim()).AppendLine();
+                sb.Append(m.IsUser ? "Человек: " : "Помощник: ").Append(ImageNote(m)).AppendLine(m.Text.Trim()).AppendLine();
             sb.AppendLine("</разговор>").AppendLine();
         }
         sb.AppendLine("Ответь на сообщение человека (только текст ответа, без пометки «Помощник:»):");
-        sb.Append(messages.Count > 0 ? messages[^1].Text.Trim() : "");
+        if (messages.Count > 0) sb.Append(ImageNote(messages[^1])).Append(messages[^1].Text.Trim());
         return sb.ToString();
     }
+
+    /// <summary>Фото — путями к файлам: Claude Code откроет их инструментом Read.</summary>
+    static string ImageNote(ChatMessage m) =>
+        m.HasImages ? "[приложено фото — открой и посмотри: " + string.Join(", ", m.Images!) + "]\n" : "";
 
     /// <summary>Разбор вывода `claude -p --output-format json`.</summary>
     public static string ParseResult(string stdout, string stderr = "")

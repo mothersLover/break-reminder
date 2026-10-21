@@ -353,7 +353,9 @@ public sealed class AppController
         assistant.Closed += (_, _) => assistant = null;
         assistant.PracticeEnded += (kind, minutes) =>
         {
-            if (minutes > 0) coach.Finished(kind, DateTime.Now, minutes);
+            // домашка — по кнопке, не по расписанию: просто записать в журнал занятий
+            if (kind == PracticeKind.Homework) { if (minutes > 0) practiceLog.Done(DateTime.Now, kind, minutes); }
+            else if (minutes > 0) coach.Finished(kind, DateTime.Now, minutes);
             else coach.Abandoned(kind, DateTime.Now);
         };
         assistant.Show();

@@ -74,8 +74,23 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # здесь нужен только CHANGELOG.md: при ручном запуске — свежий из main (описание старой версии можно дописать позже)
+      # здесь нужен только CHANGELOG.md — из основной ветки: его приводим в порядок и отправляем обратно
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      # Забыли переименовать [Unreleased] в номер версии или добавить ссылку внизу — исправить и закоммитить в main.
+      - name: Tidy CHANGELOG
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then v="${{ inputs.version }}"; else v="${GITHUB_REF_NAME#v}"; fi
+          python3 build/changelog_release.py "$v" "${{ github.repository }}" CHANGELOG.md
+          if ! git diff --quiet -- CHANGELOG.md; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "CHANGELOG: версия $v" -- CHANGELOG.md
+            git push origin HEAD || echo "::warning::Не удалось отправить исправленный CHANGELOG.md в ${{ github.event.repository.default_branch }} — описание релиза всё равно взято из исправленного файла."
+          fi
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
