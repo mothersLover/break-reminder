@@ -77,7 +77,7 @@
 
 Там `settings.ini`, `history.csv`, `tips.txt`, `tips_long.txt` (советы можно править в любом редакторе),
 `tasks.json` (свои задачи) и папка `assistant/` — память ИИ-помощника: `profile.txt` («О себе»), `notes.txt`
-(заметки помощника), `chat.json` (текущий разговор), `practice.csv` (журнал занятий), `cards.json` (карточки), `images/` (фото из переписки).
+(заметки помощника), `chat.json` (текущий разговор), `practice.csv` (журнал занятий), `cards.json` (карточки), `images/` (фото из переписки), `pins.json` (закреплённое).
 Для разработки и тестов:
 - `BREAKREMINDER_DATA_DIR` — другая папка данных (и отдельная «одна копия» программы);
 - `BREAKREMINDER_UPDATE_FEED` — свой адрес вместо GitHub API для проверки обновлений.

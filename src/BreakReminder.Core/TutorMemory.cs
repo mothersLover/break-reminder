@@ -3,6 +3,9 @@ using System.Text.Json;
 
 namespace BreakReminder.Core;
 
+/// <summary>Закреплённое сообщение: копия текста, переживает «Новый разговор».</summary>
+public sealed record PinnedNote(string Id, string Text, bool FromUser, DateTime At);
+
 /// <summary>
 /// Память ИИ-помощника (папка assistant/ рядом с настройками):
 /// profile.txt — что человек написал о себе сам; notes.txt — заметки, которые помощник ведёт после разговоров;
@@ -15,6 +18,7 @@ public sealed class TutorMemory
     readonly string dir;
     string profile, notes;
     readonly List<ChatMessage> chat;
+    readonly List<PinnedNote> pins;
     int summarized;   // сколько первых сообщений разговора уже учтено в заметках
 
     public TutorMemory() : this(Path.Combine(Paths.DataDir, "assistant")) { }
@@ -25,6 +29,7 @@ public sealed class TutorMemory
         profile = Read("profile.txt");
         notes = Read("notes.txt");
         (chat, summarized) = LoadChat();
+        pins = LoadPins();
     }
 
     string FilePath(string name) => Path.Combine(dir, name);
@@ -71,12 +76,47 @@ public sealed class TutorMemory
         try { if (Directory.Exists(ImagesDir)) Directory.Delete(ImagesDir, true); } catch { }
     }
 
-    /// <summary>«Забыть всё»: профиль, заметки, разговор.</summary>
+    /// <summary>«Забыть всё»: профиль, заметки, закреплённое, разговор.</summary>
     public void ForgetAll()
     {
         Profile = "";
         Notes = "";
+        pins.Clear();
+        SavePins();
         ClearChat();
+    }
+
+    // ---------- закреплённое ----------
+
+    /// <summary>Сколько закреплённого помощник видит в инструкциях (символов, самое новое — первым).</summary>
+    public const int MaxPinnedChars = 4000;
+    public const int MaxPins = 30;
+
+    public IReadOnlyList<PinnedNote> Pins => pins;
+
+    /// <summary>Закреплённое изменилось — для обновления панели.</summary>
+    public event Action? PinsChanged;
+
+    public bool IsPinned(string text) => pins.Any(p => p.Text == text.Trim());
+
+    /// <summary>Закрепить текст сообщения. false — уже закреплено, пусто или достигнут предел.</summary>
+    public bool Pin(string text, bool fromUser, DateTime at)
+    {
+        text = (text ?? "").Trim();
+        if (text.Length == 0 || IsPinned(text) || pins.Count >= MaxPins) return false;
+        pins.Add(new PinnedNote(Guid.NewGuid().ToString("N"), text, fromUser, at));
+        SavePins();
+        return true;
+    }
+
+    public void Unpin(string id)
+    {
+        if (pins.RemoveAll(p => p.Id == id) > 0) SavePins();
+    }
+
+    public void UnpinText(string text)
+    {
+        if (pins.RemoveAll(p => p.Text == text.Trim()) > 0) SavePins();
     }
 
     // ---------- запросы к модели ----------
@@ -115,6 +155,21 @@ public sealed class TutorMemory
             sb.AppendLine().AppendLine("<профиль — человек написал сам>").AppendLine(profile).AppendLine("</профиль>");
         if (notes.Length > 0)
             sb.AppendLine().AppendLine("<заметки о прошлых занятиях — ты вёл их сам>").AppendLine(notes).AppendLine("</заметки>");
+        if (pins.Count > 0)
+        {
+            // самое новое — первым; длинное хвостом не тащим
+            var lines = new List<string>();
+            int total = 0;
+            foreach (var p in pins.AsEnumerable().Reverse())
+            {
+                string line = $"- {p.At:dd.MM} ({(p.FromUser ? "человек" : "ты")}): {p.Text}";
+                if (total + line.Length > MaxPinnedChars) break;
+                lines.Add(line);
+                total += line.Length;
+            }
+            sb.AppendLine().AppendLine("<закреплено человеком — важное, учитывай всегда>")
+              .AppendLine(string.Join("\n", lines)).AppendLine("</закреплено>");
+        }
         return sb.ToString().TrimEnd();
     }
 
@@ -199,6 +254,23 @@ public sealed class TutorMemory
             return (list, Math.Clamp(f.Summarized, 0, list.Count));
         }
         catch { return (new(), 0); }
+    }
+
+    List<PinnedNote> LoadPins()
+    {
+        try
+        {
+            if (!File.Exists(FilePath("pins.json"))) return new();
+            return (JsonSerializer.Deserialize<List<PinnedNote>>(File.ReadAllText(FilePath("pins.json"))) ?? new())
+                .Where(p => p is { Text.Length: > 0 }).ToList();
+        }
+        catch { return new(); }
+    }
+
+    void SavePins()
+    {
+        Write("pins.json", JsonSerializer.Serialize(pins, JsonOptions));
+        PinsChanged?.Invoke();
     }
 
     void SaveChat()

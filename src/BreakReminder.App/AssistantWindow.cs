@@ -76,6 +76,11 @@ public sealed class AssistantWindow : Window
         VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(12, 0) };
     readonly Border homeworkRow;
 
+    // ---- закреплённое ----
+    readonly Expander pinsPanel = new() { IsVisible = false, HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 12, 0, 0) };
+    readonly StackPanel pinsList = new() { Spacing = 6 };
+    readonly List<Action> pinSyncs = new();         // обновить 📌 на пузырях, когда закреплённое изменилось
+
     /// <summary>Открыть карточки (повторение и список).</summary>
     public event Action? CardsRequested;
 
@@ -182,15 +187,19 @@ public sealed class AssistantWindow : Window
             }
         }, RoutingStrategies.Tunnel);
 
-        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), Margin = new Thickness(20, 18, 20, 16) };
+        pinsPanel.Content = new ScrollViewer { MaxHeight = 230, Content = pinsList };
+
+        var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), Margin = new Thickness(20, 18, 20, 16) };
         root.Children.Add(header);
         Grid.SetRow(banner, 1);
         root.Children.Add(banner);
         Grid.SetRow(homeworkRow, 1);
         root.Children.Add(homeworkRow);
-        Grid.SetRow(scroll, 2);
+        Grid.SetRow(pinsPanel, 2);
+        root.Children.Add(pinsPanel);
+        Grid.SetRow(scroll, 3);
         root.Children.Add(scroll);
-        Grid.SetRow(bottom, 3);
+        Grid.SetRow(bottom, 4);
         root.Children.Add(bottom);
         Content = root;
 
@@ -200,11 +209,92 @@ public sealed class AssistantWindow : Window
             cts?.Cancel();
             EndPractice();
             cards.Changed -= UpdateCardsButton;
+            memory.PinsChanged -= RebuildPins;
             _ = AssistantNotes.UpdateAsync(settings(), memory, cards);   // запомнить, о чём говорили
         };
         cards.Changed += UpdateCardsButton;
+        memory.PinsChanged += RebuildPins;
         UpdateCardsButton();
+        RebuildPins();
         Rebuild();
+    }
+
+    /// <summary>Панель «Закреплено»: самое новое сверху; щелчок по тексту — развернуть, ✕ — открепить.</summary>
+    void RebuildPins()
+    {
+        foreach (var sync in pinSyncs) sync();
+        pinsList.Children.Clear();
+        var items = memory.Pins.Reverse().ToList();
+        pinsPanel.IsVisible = items.Count > 0;
+        if (items.Count == 0) return;
+        string first = items[0].Text.Split('\n')[0];
+        pinsPanel.Header = new TextBlock
+        {
+            Text = $"📌 Закреплено · {items.Count}   {first}", FontSize = 13.5, TextTrimming = TextTrimming.CharacterEllipsis,
+            Foreground = Palette.B(Palette.Text), MaxWidth = 500
+        };
+        foreach (var pin in items)
+        {
+            var text = new SelectableTextBlock
+            {
+                Text = pin.Text, FontSize = 13.5, TextWrapping = TextWrapping.Wrap, MaxLines = 3, TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = Palette.B(Palette.Text)
+            };
+            var more = new Button { Content = "развернуть", Classes = { "link" }, FontSize = 12 };
+            more.Click += (_, _) =>
+            {
+                text.MaxLines = text.MaxLines == 3 ? 0 : 3;
+                more.Content = text.MaxLines == 0 ? "свернуть" : "развернуть";
+            };
+            var unpin = new Button
+            {
+                Content = "✕", Background = Brushes.Transparent, Foreground = Palette.B(Palette.Muted),
+                Padding = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Top
+            };
+            ToolTip.SetTip(unpin, "Открепить");
+            string id = pin.Id;
+            unpin.Click += (_, _) => memory.Unpin(id);
+            var body = new StackPanel
+            {
+                Spacing = 2,
+                Children = { Card.Text($"{pin.At:d MMMM, HH:mm} · {(pin.FromUser ? "ты" : "помощник")}", 11.5, Palette.Muted), text }
+            };
+            if (pin.Text.Length > 160 || pin.Text.Count(c => c == '\n') > 2) body.Children.Add(more);
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            row.Children.Add(body);
+            Grid.SetColumn(unpin, 1);
+            row.Children.Add(unpin);
+            pinsList.Children.Add(new Border
+            {
+                Background = Palette.B(Palette.Card), BorderBrush = Palette.B(Palette.Amber), BorderThickness = new Thickness(3, 0, 0, 0),
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 6), Child = row
+            });
+        }
+    }
+
+    void TogglePin(string text, bool fromUser)
+    {
+        if (memory.IsPinned(text)) memory.UnpinText(text);
+        else if (!memory.Pin(text, fromUser, DateTime.Now))
+            list.Children.Add(ErrorBubble($"Закреплено уже {TutorMemory.MaxPins} — открепи что-нибудь ненужное."));
+        if (memory.IsPinned(text)) pinsPanel.IsExpanded = true;   // показать, куда попало
+    }
+
+    async Task CopyText(string text)
+    {
+        if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard) await clipboard.SetTextAsync(text);
+    }
+
+    /// <summary>Меню по правой кнопке на сообщении: закрепить/открепить, копировать.</summary>
+    ContextMenu MessageMenu(string text, bool fromUser)
+    {
+        var pin = new MenuItem();
+        var copy = new MenuItem { Header = "Копировать" };
+        pin.Click += (_, _) => TogglePin(text, fromUser);
+        copy.Click += async (_, _) => await CopyText(text);
+        var menu = new ContextMenu { Items = { pin, copy } };
+        menu.Opening += (_, _) => pin.Header = memory.IsPinned(text) ? "Открепить" : "📌 Закрепить";
+        return menu;
     }
 
     void UpdateCardsButton()
@@ -219,7 +309,8 @@ public sealed class AssistantWindow : Window
     {
         subtitle.Text = AiClients.Describe(settings());
         list.Children.Clear();
-        if (memory.Chat.Count == 0) list.Children.Add(Bubble(Welcome(), false));
+        pinSyncs.Clear();
+        if (memory.Chat.Count == 0) list.Children.Add(Bubble(Welcome(), false, pinnable: false));
         foreach (var m in memory.Chat) list.Children.Add(Bubble(m.Text, m.IsUser, images: m.Images));
         ScrollToEnd();
     }
@@ -406,7 +497,7 @@ public sealed class AssistantWindow : Window
 
     void ScrollToEnd() => Dispatcher.UIThread.Post(() => scroll.ScrollToEnd(), DispatcherPriority.Background);
 
-    static Control Bubble(string text, bool user, bool muted = false, IReadOnlyList<string>? images = null)
+    Control Bubble(string text, bool user, bool muted = false, IReadOnlyList<string>? images = null, bool pinnable = true)
     {
         var panel = new StackPanel { Spacing = 8 };
         if (images is { Count: > 0 })
@@ -415,14 +506,16 @@ public sealed class AssistantWindow : Window
             foreach (var path in images) strip.Children.Add(Thumb(path, 150));
             panel.Children.Add(strip);
         }
+        pinnable = pinnable && !muted && text.Trim().Length > 0;
+        SelectableTextBlock? body = null;
         if (text.Length > 0)
-            panel.Children.Add(new SelectableTextBlock
+            panel.Children.Add(body = new SelectableTextBlock
             {
                 Text = text, FontSize = 14, TextWrapping = TextWrapping.Wrap,
                 Foreground = Palette.B(muted ? Palette.Muted : Palette.Text),
                 FontStyle = muted ? FontStyle.Italic : FontStyle.Normal
             });
-        return new Border
+        var bubble = new Border
         {
             Background = Palette.B(user ? Color.Parse("#2D4A63") : Palette.Card),
             CornerRadius = new CornerRadius(10),
@@ -431,6 +524,32 @@ public sealed class AssistantWindow : Window
             HorizontalAlignment = user ? HorizontalAlignment.Right : HorizontalAlignment.Left,
             Child = panel
         };
+        if (!pinnable) return bubble;
+
+        // меню и на пузыре, и на тексте (у выделяемого текста своё меню перехватило бы правый щелчок)
+        bubble.ContextMenu = MessageMenu(text, user);
+        if (body != null) body.ContextMenu = MessageMenu(text, user);
+
+        // 📌 в углу — видна при наведении (и всегда, если сообщение закреплено)
+        var pinButton = new Button
+        {
+            Content = "📌", FontSize = 12, Padding = new Thickness(5, 1), Background = Palette.B(Palette.Gray),
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, -8, -8, 0), IsVisible = memory.IsPinned(text)
+        };
+        void Sync(bool hover)
+        {
+            bool pinned = memory.IsPinned(text);
+            pinButton.IsVisible = hover || pinned;
+            pinButton.Opacity = pinned ? 1 : 0.75;
+            ToolTip.SetTip(pinButton, pinned ? "Открепить" : "Закрепить сверху чата");
+        }
+        pinButton.Click += (_, _) => { TogglePin(text, user); Sync(true); };
+        var holder = new Panel { HorizontalAlignment = bubble.HorizontalAlignment, Children = { bubble, pinButton } };
+        holder.PointerEntered += (_, _) => Sync(true);
+        holder.PointerExited += (_, _) => Sync(false);
+        pinSyncs.Add(() => Sync(holder.IsPointerOver));
+        return holder;
     }
 
     /// <summary>Миниатюра фото (если файла уже нет — подпись).</summary>
@@ -559,7 +678,7 @@ public sealed class MemoryWindow : Window
         cancel.Click += (_, _) => Close();
         forget.Click += async (_, _) =>
         {
-            if (!await ConfirmDialog.Ask(this, "Стереть профиль, заметки и переписку? Помощник забудет всё, что знал о тебе.")) return;
+            if (!await ConfirmDialog.Ask(this, "Стереть профиль, заметки, закреплённое и переписку? Помощник забудет всё, что знал о тебе.")) return;
             memory.ForgetAll();
             Close();
         };
