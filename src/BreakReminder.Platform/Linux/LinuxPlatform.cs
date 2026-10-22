@@ -19,6 +19,11 @@ public sealed class LinuxPlatform : IPlatform
     readonly Cached<TimeSpan> idle;
     readonly Cached<bool> locked, call, fullscreen;
     readonly ProcessSoundPlayer sound;
+
+    // Озвучка: speech-dispatcher (spd-say), иначе eSpeak NG. Какие языки у них есть, заранее не узнать — считаем, что все.
+    readonly Cached<string?> speechTool = new(TimeSpan.FromMinutes(5),
+        () => Cmd.Exists("spd-say") ? "spd-say" : Cmd.Exists("espeak-ng") ? "espeak-ng" : null);
+    readonly ProcessSpeech speech;
     readonly bool isX11 = string.Equals(Environment.GetEnvironmentVariable("XDG_SESSION_TYPE"), "x11", StringComparison.OrdinalIgnoreCase);
 
     public LinuxPlatform()
@@ -28,6 +33,11 @@ public sealed class LinuxPlatform : IPlatform
         locked = new Cached<bool>(TimeSpan.FromSeconds(3), ReadLocked);
         call = new Cached<bool>(TimeSpan.FromSeconds(3), ReadCall);
         fullscreen = new Cached<bool>(TimeSpan.FromSeconds(3), ReadFullscreen);
+        speech = new ProcessSpeech(
+            lang => speechTool.Value is { } tool ? $"{tool} ({lang})" : null,
+            (text, lang, slow, _) => speechTool.Value == "spd-say"
+                ? ProcessSpeech.Args("spd-say", "-w", "-l", lang, "-r", slow ? "-40" : "-10", text)   // -w: дождаться конца
+                : ProcessSpeech.Args("espeak-ng", "-v", lang, "-s", slow ? "120" : "160", text));
         sound = new ProcessSoundPlayer(path =>
             Cmd.Start("paplay", Cmd.Quote(path)) ?? Cmd.Start("aplay", "-q " + Cmd.Quote(path)));
     }
@@ -146,6 +156,10 @@ public sealed class LinuxPlatform : IPlatform
 
     public void StopSound() => sound.Stop();
 
+    public string? VoiceFor(string lang) => speech.VoiceFor(lang);
+    public Task<bool> SpeakAsync(string text, string lang, bool slow, CancellationToken ct = default) => speech.SpeakAsync(text, lang, slow, ct);
+    public void StopSpeaking() => speech.Stop();
+
     // ---------- горячая клавиша ----------
 
     public string? PauseHotkeyName => null;
@@ -162,5 +176,9 @@ public sealed class LinuxPlatform : IPlatform
         try { Process.Start(new ProcessStartInfo("xdg-open", Cmd.Quote(path)) { UseShellExecute = false }); } catch { }
     }
 
-    public void Dispose() => sound.Cleanup();
+    public void Dispose()
+    {
+        speech.Stop();
+        sound.Cleanup();
+    }
 }

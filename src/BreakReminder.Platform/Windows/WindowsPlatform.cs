@@ -20,6 +20,7 @@ public sealed class WindowsPlatform : IPlatform
     bool hotkeyRegistered;
     volatile bool locked;
     IntPtr soundMemory;
+    readonly WindowsSpeech speech = new();
 
     const int HotkeyId = 1;
 
@@ -174,6 +175,12 @@ public sealed class WindowsPlatform : IPlatform
         Native.PlaySound("SystemAsterisk", IntPtr.Zero, Native.SND_ALIAS | Native.SND_ASYNC);
     }
 
+    // ---------- озвучка ----------
+
+    public string? VoiceFor(string lang) => speech.VoiceFor(lang);
+    public Task<bool> SpeakAsync(string text, string lang, bool slow, CancellationToken ct = default) => speech.SpeakAsync(text, lang, slow, ct);
+    public void StopSpeaking() => speech.Stop();
+
     public void StopSound()
     {
         Native.PlaySound(IntPtr.Zero, IntPtr.Zero, 0); // останавливает синхронно
@@ -240,6 +247,7 @@ public sealed class WindowsPlatform : IPlatform
     {
         UnregisterPauseHotkey();
         StopSound();
+        speech.Dispose();
         if (window != null)
         {
             Native.WTSUnRegisterSessionNotification(window.Handle);

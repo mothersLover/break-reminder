@@ -54,8 +54,31 @@ public sealed class CardsWindow : Window
     /// <summary>Окно закрыто: сколько карточек повторено и сколько минут занимался.</summary>
     public event Action<int, int>? Finished;
 
-    public CardsWindow(CardStore store, int? minutes = null)
+    /// <summary>«🎧 Послушать» — открыть «Послушай и повтори».</summary>
+    public event Action? ListenRequested;
+
+    // озвучка (null — без неё)
+    readonly IPlatform? platform;
+    readonly Func<AppSettings>? settings;
+    readonly Button speakBack = SpeakButton();
+
+    /// <summary>Кнопка 🔊 — произнести.</summary>
+    static Button SpeakButton() => new()
     {
+        Content = "🔊", FontSize = 15, Padding = new Thickness(8, 2), Background = Brushes.Transparent,
+        VerticalAlignment = VerticalAlignment.Center
+    };
+
+    void Speak(string text)
+    {
+        if (platform == null || settings == null) return;
+        _ = platform.SpeakAsync(text, settings().SpeechLang, false);
+    }
+
+    public CardsWindow(CardStore store, int? minutes = null, IPlatform? platform = null, Func<AppSettings>? settings = null)
+    {
+        this.platform = platform;
+        this.settings = settings;
         this.store = store;
         this.minutes = minutes;
         queue = store.Queue(DateTime.Now);
@@ -69,9 +92,15 @@ public sealed class CardsWindow : Window
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = Palette.B(Palette.Bg);
 
-        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var listen = new Button { Content = "🎧 Послушать", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0),
+            IsVisible = platform != null };
+        ToolTip.SetTip(listen, "«Послушай и повтори»: фразы из карточек вслух — повторяй за голосом");
+        listen.Click += (_, _) => ListenRequested?.Invoke();
+        var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
+        Grid.SetColumn(listen, 1);
+        header.Children.Add(listen);
         header.Children.Add(new StackPanel { Spacing = 2, Children = { Card.Text("Карточки", 26, Palette.Text, FontWeight.Bold), subtitle } });
-        Grid.SetColumn(modeButton, 1);
+        Grid.SetColumn(modeButton, 2);
         header.Children.Add(modeButton);
         modeButton.Click += (_, _) => SetMode(body.Content == reviewPane ? listPane! : reviewPane!);
 
@@ -112,6 +141,7 @@ public sealed class CardsWindow : Window
         Closed += (_, _) =>
         {
             timer.Stop();
+            platform?.StopSpeaking();
             store.Changed -= OnStoreChanged;
             Finished?.Invoke(reviewed, reviewed > 0 ? Math.Max(1, (int)Math.Round((DateTime.Now - started).TotalMinutes)) : 0);
         };
@@ -177,7 +207,14 @@ public sealed class CardsWindow : Window
         }
 
         answerPart.Children.Add(new Border { Height = 1, Background = Palette.B(Palette.Gray), Margin = new Thickness(0, 4) });
-        answerPart.Children.Add(back);
+        ToolTip.SetTip(speakBack, "Послушать произношение");
+        speakBack.Click += (_, _) => { if (current != null) Speak(current.Back); };
+        speakBack.IsVisible = platform != null;
+        var backRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        backRow.Children.Add(back);
+        Grid.SetColumn(speakBack, 1);
+        backRow.Children.Add(speakBack);
+        answerPart.Children.Add(backRow);
         answerPart.Children.Add(match);
         answerPart.Children.Add(note);
         answerPart.Children.Add(grades);
@@ -241,6 +278,9 @@ public sealed class CardsWindow : Window
         if (current == null || shown) return;
         shown = true;
         back.Text = current.Back;
+        bool speakable = platform != null && !SpeechText.HasCyrillic(current.Back);
+        speakBack.IsVisible = speakable;
+        if (speakable && settings!().SpeechAutoCards) Speak(current.Back);   // сразу услышать правильный ответ
         note.Text = current.Note;
         note.IsVisible = current.Note.Length > 0;
         string typed = (answer.Text ?? "").Trim();
@@ -324,6 +364,19 @@ public sealed class CardsWindow : Window
         newFront.Focus();
     }
 
+    /// <summary>Ответ в списке — с 🔊, если его можно произнести.</summary>
+    Control BackLine(string text)
+    {
+        var line = Card.Text(text, 14, Palette.Green);
+        if (platform == null || SpeechText.HasCyrillic(text)) return line;
+        var speak = SpeakButton();
+        speak.FontSize = 12.5;
+        speak.Padding = new Thickness(6, 0);
+        ToolTip.SetTip(speak, "Послушать");
+        speak.Click += (_, _) => Speak(text);
+        return new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Children = { line, speak } };
+    }
+
     void RebuildList()
     {
         rows.Children.Clear();
@@ -347,7 +400,7 @@ public sealed class CardsWindow : Window
                 Children =
                 {
                     Card.Text(c.Front, 14.5, Palette.Text, FontWeight.SemiBold),
-                    Card.Text(c.Back, 14, Palette.Green),
+                    BackLine(c.Back),
                     Card.Text(due + (c.Lapses > 0 ? $" · забывал {c.Lapses}" : "") + (c.Note.Length > 0 ? " · " + c.Note : ""), 12, Palette.Muted)
                 }
             };

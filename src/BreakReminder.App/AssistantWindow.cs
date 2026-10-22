@@ -84,8 +84,19 @@ public sealed class AssistantWindow : Window
     /// <summary>Открыть карточки (повторение и список).</summary>
     public event Action? CardsRequested;
 
-    public AssistantWindow(Func<AppSettings> settings, TutorMemory memory, CardStore cards)
+    readonly IPlatform? platform;
+
+    /// <summary>Произнести иностранные фразы из сообщения (русские пояснения — пропускаются).</summary>
+    void SpeakForeign(string text)
     {
+        var parts = SpeechText.Foreign(text);
+        if (platform == null || parts.Count == 0) return;
+        _ = platform.SpeakAsync(string.Join(". ", parts), settings().SpeechLang, false);
+    }
+
+    public AssistantWindow(Func<AppSettings> settings, TutorMemory memory, CardStore cards, IPlatform? platform = null)
+    {
+        this.platform = platform;
         this.settings = settings;
         this.memory = memory;
         this.cards = cards;
@@ -293,6 +304,12 @@ public sealed class AssistantWindow : Window
         pin.Click += (_, _) => TogglePin(text, fromUser);
         copy.Click += async (_, _) => await CopyText(text);
         var menu = new ContextMenu { Items = { pin, copy } };
+        if (platform != null && SpeechText.Foreign(text).Count > 0)
+        {
+            var listen = new MenuItem { Header = "🔊 Прослушать" };
+            listen.Click += (_, _) => SpeakForeign(text);
+            menu.Items.Insert(0, listen);
+        }
         menu.Opening += (_, _) => pin.Header = memory.IsPinned(text) ? "Открепить" : "📌 Закрепить";
         return menu;
     }
@@ -530,22 +547,35 @@ public sealed class AssistantWindow : Window
         bubble.ContextMenu = MessageMenu(text, user);
         if (body != null) body.ContextMenu = MessageMenu(text, user);
 
-        // 📌 в углу — видна при наведении (и всегда, если сообщение закреплено)
+        // в углу при наведении: 🔊 (если есть иностранные фразы) и 📌 (видна всегда, если сообщение закреплено)
         var pinButton = new Button
         {
             Content = "📌", FontSize = 12, Padding = new Thickness(5, 1), Background = Palette.B(Palette.Gray),
-            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(0, -8, -8, 0), IsVisible = memory.IsPinned(text)
+            IsVisible = memory.IsPinned(text)
         };
+        var speakButton = new Button
+        {
+            Content = "🔊", FontSize = 12, Padding = new Thickness(5, 1), Background = Palette.B(Palette.Gray), IsVisible = false
+        };
+        bool speakable = platform != null && SpeechText.Foreign(text).Count > 0;
+        ToolTip.SetTip(speakButton, "Прослушать фразы на изучаемом языке");
+        speakButton.Click += (_, _) => SpeakForeign(text);
         void Sync(bool hover)
         {
             bool pinned = memory.IsPinned(text);
             pinButton.IsVisible = hover || pinned;
             pinButton.Opacity = pinned ? 1 : 0.75;
+            speakButton.IsVisible = hover && speakable;
             ToolTip.SetTip(pinButton, pinned ? "Открепить" : "Закрепить сверху чата");
         }
         pinButton.Click += (_, _) => { TogglePin(text, user); Sync(true); };
-        var holder = new Panel { HorizontalAlignment = bubble.HorizontalAlignment, Children = { bubble, pinButton } };
+        var corner = new StackPanel
+        {
+            Orientation = Orientation.Horizontal, Spacing = 4,
+            HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, -8, -8, 0), Children = { speakButton, pinButton }
+        };
+        var holder = new Panel { HorizontalAlignment = bubble.HorizontalAlignment, Children = { bubble, corner } };
         holder.PointerEntered += (_, _) => Sync(true);
         holder.PointerExited += (_, _) => Sync(false);
         pinSyncs.Add(() => Sync(holder.IsPointerOver));

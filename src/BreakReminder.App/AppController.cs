@@ -25,7 +25,7 @@ public sealed class AppController
     readonly WorkDayEngine engine;
     readonly MainWindow main;
     readonly TrayIcon tray;
-    readonly NativeMenuItem miPause, miMain, miAssistant, miCards;
+    readonly NativeMenuItem miPause, miMain, miAssistant, miCards, miListen;
     readonly DispatcherTimer timer, calendarTimer, updateTimer, practiceTimer;
     AppSettings settings;
     ReminderWindow? reminder;
@@ -79,6 +79,8 @@ public sealed class AppController
         miAssistant.Click += (_, _) => OpenAssistant();
         miCards = new NativeMenuItem("Карточки");
         miCards.Click += (_, _) => OpenCards();
+        miListen = new NativeMenuItem("🎧 Послушай и повтори");
+        miListen.Click += (_, _) => OpenListen();
         var miExit = new NativeMenuItem("Выход");
         miExit.Click += async (_, _) => await ExitWithConfirm();
         menu.Items.Add(miShow);
@@ -87,6 +89,7 @@ public sealed class AppController
         menu.Items.Add(miAgenda);
         menu.Items.Add(miAssistant);
         menu.Items.Add(miCards);
+        menu.Items.Add(miListen);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(miExit);
         tray = new TrayIcon { Icon = Icons.Clock(Palette.Gray), ToolTipText = "Отдыхалка", Menu = menu, IsVisible = true };
@@ -156,7 +159,7 @@ public sealed class AppController
         main.SetAgendaCount(upcoming);
         main.SetAssistantVisible(settings.AiOn);
         miAssistant.IsVisible = settings.AiOn;
-        miCards.IsVisible = settings.AiOn && cards.All.Count > 0;
+        miCards.IsVisible = miListen.IsVisible = settings.AiOn && cards.All.Count > 0;
         int due = settings.AiOn ? cards.DueCount(now) : 0;
         miCards.Header = due > 0 ? $"Карточки ({due})" : "Карточки";
 
@@ -203,6 +206,10 @@ public sealed class AppController
             ? Weather.BreakLine(weather, DateTime.Now) : null;
         reminder = new ReminderWindow(settings, engine.SinceLastBreak, false, isLong, platform, engine.ReminderNote,
             string.IsNullOrEmpty(weatherLine) ? null : weatherLine);
+        // в перерыве — «Послушай и повтори», если есть что слушать и чем
+        reminder.ListenAvailable = settings.AiOn && settings.ListenInBreak && cards.ForListening(DateTime.Now, 1).Count > 0
+                                   && platform.VoiceFor(settings.SpeechLang) != null;
+        reminder.ListenRequested += OpenListen;
         reminder.BreakRequested += () =>
         {
             var length = engine.BeginBreak(DateTime.Now);
@@ -228,6 +235,7 @@ public sealed class AppController
     {
         ShowMain();
         var w = new SettingsWindow(settings, platform, calendarStatus, engine.Meetings, memory);
+        w.ListenRequested += s => ListenWindow.Show(cards.ForListening(DateTime.Now, s.ListenCount), s, platform);
         var result = await w.ShowDialog<AppSettings?>(main);
         if (result == null) return;
         bool calendarChanged = result.CalendarOn != settings.CalendarOn || result.CalendarUrl != settings.CalendarUrl;
@@ -348,7 +356,7 @@ public sealed class AppController
             assistant.Activate();
             return;
         }
-        assistant = new AssistantWindow(() => settings, memory, cards);
+        assistant = new AssistantWindow(() => settings, memory, cards, platform);
         assistant.CardsRequested += () => OpenCards();
         assistant.Closed += (_, _) => assistant = null;
         assistant.PracticeEnded += (kind, minutes) =>
@@ -370,7 +378,8 @@ public sealed class AppController
             cardsWindow.Activate();
             return;
         }
-        cardsWindow = new CardsWindow(cards, minutes);
+        cardsWindow = new CardsWindow(cards, minutes, platform, () => settings);
+        cardsWindow.ListenRequested += OpenListen;
         cardsWindow.Closed += (_, _) => cardsWindow = null;
         cardsWindow.Finished += (reviewed, mins) =>
         {
@@ -380,6 +389,9 @@ public sealed class AppController
         };
         cardsWindow.Show();
     }
+
+    /// <summary>«Послушай и повтори»: фразы из карточек вслух.</summary>
+    void OpenListen() => ListenWindow.Show(cards.ForListening(DateTime.Now, settings.ListenCount), settings, platform);
 
     /// <summary>Пора позаниматься — предложение в углу экрана. Днём, если накопились карточки, — их повторение.</summary>
     void OfferPractice(PracticeKind kind)

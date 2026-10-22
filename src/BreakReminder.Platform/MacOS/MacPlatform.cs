@@ -18,6 +18,20 @@ public sealed class MacPlatform : IPlatform
     readonly Cached<bool> locked, call;
     readonly ProcessSoundPlayer sound = new(path => Cmd.Start("/usr/bin/afplay", Cmd.Quote(path)));
 
+    // Озвучка: встроенная команда say. Голоса — из «say -v ?» (строки «Thomas   fr_FR  # Bonjour…»).
+    static readonly Cached<List<(string Name, string Lang)>> Voices = new(TimeSpan.FromMinutes(5), () =>
+        (Cmd.Run("/usr/bin/say", "-v ?", 3000) ?? "")
+            .Split('\n')
+            .Select(l => System.Text.RegularExpressions.Regex.Match(l, @"^(.+?)\s{2,}([a-z]{2})[_-]([A-Z]{2})"))
+            .Where(m => m.Success)
+            .Select(m => (m.Groups[1].Value.Trim(), m.Groups[2].Value + "_" + m.Groups[3].Value))
+            .ToList());
+    readonly ProcessSpeech speech = new(
+        lang => Voices.Value.Where(v => v.Lang.StartsWith(lang + "_"))
+            .OrderByDescending(v => v.Lang == $"{lang}_{lang.ToUpperInvariant()}")   // fr_FR раньше fr_CA
+            .Select(v => v.Name).FirstOrDefault(),
+        (text, _, slow, voice) => ProcessSpeech.Args("/usr/bin/say", "-v", voice, "-r", slow ? "140" : "185", text));
+
     public MacPlatform()
     {
         locked = new Cached<bool>(TimeSpan.FromSeconds(2), ReadLocked);
@@ -119,6 +133,10 @@ public sealed class MacPlatform : IPlatform
     public void PlaySystemSound() => sound.PlayFile("/System/Library/Sounds/Glass.aiff");
     public void StopSound() => sound.Stop();
 
+    public string? VoiceFor(string lang) => speech.VoiceFor(lang);
+    public Task<bool> SpeakAsync(string text, string lang, bool slow, CancellationToken ct = default) => speech.SpeakAsync(text, lang, slow, ct);
+    public void StopSpeaking() => speech.Stop();
+
     // ---------- горячая клавиша (Carbon) ----------
 
     static Mac.EventHandlerProc? handlerProc; // держим делегат от GC
@@ -173,6 +191,7 @@ public sealed class MacPlatform : IPlatform
     public void Dispose()
     {
         UnregisterPauseHotkey();
+        speech.Stop();
         sound.Cleanup();
     }
 }

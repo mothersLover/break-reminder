@@ -207,6 +207,24 @@ public partial class SettingsWindow : Window
         AiMemoryButton.IsEnabled = memory != null;
         AiMemoryButton.Click += async (_, _) => { if (memory != null) await new MemoryWindow(memory).ShowDialog(this); };
 
+        // ---- озвучка ----
+        SpeechLangCombo.ItemsSource = SpeechText.Languages.Select(l => l.Name).ToList();
+        SpeechLangCombo.SelectedIndex = Math.Max(0, Array.FindIndex(SpeechText.Languages, l => l.Code == s.SpeechLang));
+        SpeechAutoCheck.IsChecked = s.SpeechAutoCards;
+        ListenBreakCheck.IsChecked = s.ListenInBreak;
+        ListenCountNum.Value = s.ListenCount;
+        SpeechSlowCheck.IsChecked = s.SpeechSlow;
+        SpeechLangCombo.SelectionChanged += (_, _) => ShowVoice();
+        SpeechTestButton.Click += async (_, _) =>
+        {
+            if (platform == null) return;
+            string lang = SpeechLang();
+            if (!await platform.SpeakAsync(SpeechText.Sample(lang), lang, false))
+                SpeechStatusText.Text = SpeechText.InstallHint(platform.Name, lang);
+        };
+        ListenNowButton.Click += (_, _) => ListenRequested?.Invoke(Collect());
+        ShowVoice();
+
         // ---- Тексты ----
         FillTexts(s.TitleShort, s.TitleLong, s.TipsShort, s.TipsLong, s.BtnDone, s.BtnSnooze, s.BtnSkip);
 
@@ -356,6 +374,20 @@ public partial class SettingsWindow : Window
         {
             CheckUpdateButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>«Послушать сейчас» — открыть «Послушай и повтори» с текущими (ещё не сохранёнными) настройками.</summary>
+    public event Action<AppSettings>? ListenRequested;
+
+    string SpeechLang() => SpeechText.Languages[Math.Max(0, SpeechLangCombo.SelectedIndex)].Code;
+
+    void ShowVoice()
+    {
+        if (platform == null) return;
+        string lang = SpeechLang();
+        var voice = platform.VoiceFor(lang);
+        SpeechStatusText.Text = voice != null ? "Голос: " + voice : SpeechText.InstallHint(platform.Name, lang);
+        SpeechTestButton.IsEnabled = ListenNowButton.IsEnabled = voice != null;
     }
 
     void ShowClaudeFound()
@@ -525,6 +557,11 @@ public partial class SettingsWindow : Window
         s.AiOllamaUrl = Or(AiOllamaUrlBox.Text, AiClients.DefaultOllamaUrl);
         s.AiOllamaModel = (AiOllamaModelBox.Text ?? "").Trim();
         s.AiHintsFirst = AiHintsCheck.IsChecked == true;
+        s.SpeechLang = SpeechLang();
+        s.SpeechAutoCards = SpeechAutoCheck.IsChecked == true;
+        s.ListenInBreak = ListenBreakCheck.IsChecked == true;
+        s.ListenCount = N(ListenCountNum, s.ListenCount);
+        s.SpeechSlow = SpeechSlowCheck.IsChecked == true;
         s.PracticeOn = PracticeCheck.IsChecked == true;
         s.PracticeMorning = PracticeMorningCheck.IsChecked == true;
         s.PracticeMorningMin = N(PracticeMorningNum, s.PracticeMorningMin);

@@ -26,6 +26,8 @@
             <Button Grid.Column="0" x:Name="DoneButton" Classes="flat" Background="#2ECC71" />
             <Button Grid.Column="2" x:Name="SnoozeButton" Classes="flat" Background="#484C5E" />
             <Button Grid.Column="4" x:Name="SkipButton" Classes="flat" Background="#484C5E" />
+            <Button Grid.Column="2" Grid.ColumnSpan="3" x:Name="ListenButton" Classes="flat" Background="#3498DB"
+                    Content="🎧 Послушай и повтори" IsVisible="False" />
           </Grid>
         </StackPanel>
       </Border>

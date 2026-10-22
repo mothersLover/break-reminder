@@ -34,6 +34,16 @@ public interface IPlatform : IEnvironmentProbe, IDisposable
     void PlaySystemSound();
     void StopSound();
 
+    // ---- озвучка ----
+    /// <summary>Имя голоса для языка (код ISO: "fr", "en"…), или null — такого голоса в системе нет.</summary>
+    string? VoiceFor(string lang);
+    /// <summary>
+    /// Произнести текст голосом языка lang (медленнее — для повторения). Завершается, когда договорил
+    /// или когда отменили. false — голоса нет. Новая фраза прерывает предыдущую.
+    /// </summary>
+    Task<bool> SpeakAsync(string text, string lang, bool slow, CancellationToken ct = default);
+    void StopSpeaking();
+
     // ---- горячая клавиша паузы ----
     /// <summary>Как называется комбинация на этой ОС, или null — глобальные клавиши не поддерживаются.</summary>
     string? PauseHotkeyName { get; }

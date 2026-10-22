@@ -15,6 +15,10 @@ public partial class ReminderWindow : Window
     public event Action<ReminderResult>? Answered;
     /// <summary>Нажали «Начать перерыв» — вернуть длительность перерыва (движок отмечает начало перерыва).</summary>
     public event Func<TimeSpan>? BreakRequested;
+    /// <summary>В перерыве нажали «🎧 Послушай и повтори».</summary>
+    public event Action? ListenRequested;
+    /// <summary>Показывать ли в перерыве «Послушай и повтори» (есть карточки и голос).</summary>
+    public bool ListenAvailable { get; set; }
 
     readonly AppSettings s;
     readonly IPlatform platform;
@@ -76,6 +80,12 @@ public partial class ReminderWindow : Window
         };
         SnoozeButton.Click += (_, _) => Answer(ReminderResult.Snooze);
         SkipButton.Click += (_, _) => Answer(ReminderResult.Skip);
+        ListenButton.Click += (_, _) =>
+        {
+            ListenButton.IsVisible = false;
+            Grid.SetColumnSpan(DoneButton, 5);
+            ListenRequested?.Invoke();
+        };
 
         if (s.Popup == PopupMode.Fullscreen)
         {
@@ -185,7 +195,8 @@ public partial class ReminderWindow : Window
         InfoText.Foreground = Palette.B(Palette.Muted);
         CountdownText.IsVisible = BreakProgress.IsVisible = true;
         SnoozeButton.IsVisible = SkipButton.IsVisible = false;
-        Grid.SetColumnSpan(DoneButton, 5);
+        Grid.SetColumnSpan(DoneButton, ListenAvailable ? 1 : 5);
+        ListenButton.IsVisible = ListenAvailable;
         DoneButton.Content = "Закончить раньше";
         DoneButton.Background = Palette.B(Palette.Gray);
 
@@ -218,6 +229,8 @@ public partial class ReminderWindow : Window
         TipText.Text = "Можно возвращаться к работе. Хорошего продолжения!";
         InfoText.Text = "";
         DoneButton.Content = "Вернуться к работе";
+        ListenButton.IsVisible = false;
+        Grid.SetColumnSpan(DoneButton, 5);
         DoneButton.Background = Palette.B(Palette.Green);
         if (s.SoundOn && platform != null) platform.PlayWav(Synth.Melody("soft", s.Volume / 100.0));
         platform?.FlashWindow(this.Handle(), true);

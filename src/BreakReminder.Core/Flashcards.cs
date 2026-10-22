@@ -163,6 +163,19 @@ public sealed class CardStore
         return pool[(today.DayOfYear + today.Year) % pool.Count];
     }
 
+    /// <summary>
+    /// Что послушать: сначала то, что пора повторить, потом недавно выученное и забываемое, потом новое.
+    /// Только карточки, где ответ — иностранная фраза (без кириллицы).
+    /// </summary>
+    public List<Flashcard> ForListening(DateTime now, int count)
+    {
+        var speakable = cards.Where(c => !SpeechText.HasCyrillic(c.Back)).ToList();
+        var due = speakable.Where(c => !c.IsNew && c.Due <= now).OrderBy(c => c.Due);
+        var recent = speakable.Where(c => !c.IsNew && c.Due > now).OrderByDescending(c => c.Lapses).ThenByDescending(c => c.LastReview);
+        var fresh = speakable.Where(c => c.IsNew).OrderByDescending(c => c.Created);
+        return due.Concat(recent).Concat(fresh).Distinct().Take(count).ToList();
+    }
+
     /// <summary>Вопросы уже существующих карточек — чтобы помощник не повторялся.</summary>
     public IEnumerable<string> RecentFronts(int max) => cards.OrderByDescending(c => c.Created).Take(max).Select(c => c.Front);
 

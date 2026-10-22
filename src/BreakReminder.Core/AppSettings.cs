@@ -99,6 +99,13 @@ public sealed class AppSettings
     public int PracticeDayCount = 2;         // мини-тренировок за рабочий день (0 — не надо)
     public int PracticeDayMin = 3;
     public bool PracticeCards = true;        // днём — повторение карточек, если накопились
+
+    // ---- озвучка ----
+    public string SpeechLang = "fr";         // на каком языке произносить карточки и фразы помощника
+    public bool SpeechSlow = true;           // «Послушай и повтори»: первый раз — медленнее
+    public bool SpeechAutoCards = true;      // в карточках — сразу произносить ответ
+    public bool ListenInBreak = true;        // в перерыве — кнопка «Послушай и повтори»
+    public int ListenCount = 5;              // фраз за раз
     public bool PracticeEvening = true;      // вечернее занятие
     public int PracticeEveningAt = 20 * 60;  // 20:00
     public int PracticeEveningMin = 15;
@@ -203,6 +210,11 @@ public sealed class AppSettings
             s.PracticeDayCount = Int(d, "PracticeDayCount", s.PracticeDayCount, 0, 6);
             s.PracticeDayMin = Int(d, "PracticeDayMin", s.PracticeDayMin, 1, 30);
             s.PracticeCards = Bool(d, "PracticeCards", s.PracticeCards);
+            s.SpeechLang = Str(d, "SpeechLang", s.SpeechLang);
+            s.SpeechSlow = Bool(d, "SpeechSlow", s.SpeechSlow);
+            s.SpeechAutoCards = Bool(d, "SpeechAutoCards", s.SpeechAutoCards);
+            s.ListenInBreak = Bool(d, "ListenInBreak", s.ListenInBreak);
+            s.ListenCount = Int(d, "ListenCount", s.ListenCount, 1, 20);
             s.PracticeEvening = Bool(d, "PracticeEvening", s.PracticeEvening);
             s.PracticeEveningAt = Int(d, "PracticeEveningAt", s.PracticeEveningAt, 0, 24 * 60 - 1);
             s.PracticeEveningMin = Int(d, "PracticeEveningMin", s.PracticeEveningMin, 1, 120);
@@ -311,6 +323,11 @@ public sealed class AppSettings
             W("PracticeDayCount", PracticeDayCount);
             W("PracticeDayMin", PracticeDayMin);
             B("PracticeCards", PracticeCards);
+            W("SpeechLang", OneLine(SpeechLang));
+            B("SpeechSlow", SpeechSlow);
+            B("SpeechAutoCards", SpeechAutoCards);
+            B("ListenInBreak", ListenInBreak);
+            W("ListenCount", ListenCount);
             B("PracticeEvening", PracticeEvening);
             W("PracticeEveningAt", PracticeEveningAt);
             W("PracticeEveningMin", PracticeEveningMin);
