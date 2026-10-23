@@ -18,6 +18,7 @@ public sealed class AppController
     readonly TutorMemory memory = new();
     AssistantWindow? assistant;
     readonly PracticeLog practiceLog = new();
+    readonly ConnectivityGate gate;
     readonly CardStore cards = new();
     CardsWindow? cardsWindow;
     readonly PracticeCoach coach;
@@ -55,6 +56,17 @@ public sealed class AppController
         tasks.Changed += () => Render();
         coach = new PracticeCoach(settings, engine, platform, practiceLog);
         coach.Due += OfferPractice;
+
+        // Связь проверяем по прогнозу погоды: нет прогноза — к ИИ не обращаемся (см. AiClients.Gate).
+        // Город из настроек, а если его нет — Москва: важно лишь, отвечает ли сервис прогнозов.
+        AiClients.Gate = gate = new ConnectivityGate(ct => settings.HasWeatherPlace
+            ? Weather.TodayAsync(settings.WeatherLat, settings.WeatherLon, ct)
+            : Weather.TodayAsync(55.7558, 37.6173, ct));
+        gate.Changed += () => Dispatcher.UIThread.Post(() =>
+        {
+            Render();
+            assistant?.UpdateOnline();
+        });
 
         main = new MainWindow { Icon = Icons.Clock(Palette.Green) };
         main.MainClicked += OnMainClicked;
@@ -119,9 +131,11 @@ public sealed class AppController
         {
             RefreshCalendar();
             if (engine.State != WorkState.Idle && DateTime.Now - weatherAt > TimeSpan.FromHours(3)) _ = RefreshWeather();
+            CheckConnection();
         };
         calendarTimer.Start();
         RefreshCalendar();
+        CheckConnection();
 
         // После обновления — продолжить рабочий день с того же места.
         if (EngineSnapshot.TakeSaved(DateTime.Now, TimeSpan.FromMinutes(30)) is { } snap)
@@ -157,7 +171,7 @@ public sealed class AppController
         int upcoming = (settings.CalendarOn ? engine.Meetings.Count(m => m.Start.Date == now.Date && m.End > now) : 0)
                        + tasks.ForDay(now).Count(t => !t.Done);
         main.SetAgendaCount(upcoming);
-        main.SetAssistantVisible(settings.AiOn);
+        main.SetAssistantVisible(settings.AiOn, settings.AiRequireWeather && gate.Online == false);
         miAssistant.IsVisible = settings.AiOn;
         miCards.IsVisible = miListen.IsVisible = settings.AiOn && cards.All.Count > 0;
         int due = settings.AiOn ? cards.DueCount(now) : 0;
@@ -246,6 +260,7 @@ public sealed class AppController
         platform.SetAutostart(w.AutostartChecked);
         ApplyHotkey();
         if (calendarChanged) RefreshCalendar();
+        CheckConnection();
         if (!settings.AiOn) assistant?.Close();   // помощника выключили
         else assistant?.Rebuild();                // могли сменить подключение
         Render();
@@ -393,12 +408,26 @@ public sealed class AppController
     /// <summary>«Послушай и повтори»: фразы из карточек вслух.</summary>
     void OpenListen() => ListenWindow.Show(cards.ForListening(DateTime.Now, settings.ListenCount), settings, platform);
 
-    /// <summary>Пора позаниматься — предложение в углу экрана. Днём, если накопились карточки, — их повторение.</summary>
-    void OfferPractice(PracticeKind kind)
+    /// <summary>Проверить связь (по прогнозу), если помощник включён и проверка не выключена в настройках.</summary>
+    void CheckConnection()
+    {
+        if (settings.AiOn && settings.AiRequireWeather) _ = gate.CheckAsync();
+    }
+
+    /// <summary>
+    /// Пора позаниматься — предложение в углу экрана. Днём, если накопились карточки, — их повторение
+    /// (ему связь не нужна). Занятие с помощником без связи не предлагаем — спросим позже.
+    /// </summary>
+    async void OfferPractice(PracticeKind kind)
     {
         practiceOffer?.Close();
         int due = cards.DueCount(DateTime.Now);
         bool useCards = kind == PracticeKind.Day && settings.PracticeCards && due >= 3;
+        if (!useCards && settings.AiRequireWeather && !await gate.CheckAsync())
+        {
+            coach.Snooze(kind, DateTime.Now);
+            return;
+        }
         practiceOffer = new PracticeOfferWindow(kind, settings, platform, practiceLog.Streak(DateTime.Today), useCards ? due : null);
         practiceOffer.Answered += async choice =>
         {
@@ -457,6 +486,7 @@ public sealed class AppController
     {
         if (!settings.Weather) return;
         var (w, error) = await WeatherLoader.LoadAsync(settings);
+        if (w != null) gate.Report(true);   // прогноз пришёл — связь есть
         weatherAt = DateTime.Now;
         weatherError = error;
         if (w != null) weather = w;

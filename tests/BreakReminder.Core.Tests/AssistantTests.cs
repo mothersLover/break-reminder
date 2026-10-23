@@ -85,6 +85,7 @@ public class TutorMemoryTests : IDisposable
     }
 }
 
+[Collection("AiClients.Gate")]
 public class AiClientTests : IDisposable
 {
     readonly string dir = Path.Combine(Path.GetTempPath(), "br-cc-" + Guid.NewGuid().ToString("N"));

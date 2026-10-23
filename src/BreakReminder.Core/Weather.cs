@@ -41,7 +41,10 @@ public static class Weather
     public static async Task<WeatherToday> TodayAsync(double lat, double lon, CancellationToken ct = default)
     {
         string inv(double v) => v.ToString(CultureInfo.InvariantCulture);
-        var url = "https://api.open-meteo.com/v1/forecast?latitude=" + inv(lat) + "&longitude=" + inv(lon) +
+        // для разработки и тестов: свой адрес прогноза (BREAKREMINDER_WEATHER_URL), например чтобы изобразить «нет связи»
+        string api = Environment.GetEnvironmentVariable("BREAKREMINDER_WEATHER_URL") is { Length: > 0 } custom
+            ? custom.TrimEnd('/') : "https://api.open-meteo.com";
+        var url = api + "/v1/forecast?latitude=" + inv(lat) + "&longitude=" + inv(lon) +
                   "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
                   "&hourly=temperature_2m,precipitation_probability,weather_code&timezone=auto&forecast_days=1";
         return ParseToday(await Get(url, ct).ConfigureAwait(false));

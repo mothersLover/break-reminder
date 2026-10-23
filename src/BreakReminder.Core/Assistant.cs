@@ -68,8 +68,20 @@ public static class AiClients
     public const string DefaultOpenAiUrl = "https://api.openai.com/v1";
     public const string DefaultOllamaUrl = "http://localhost:11434/v1";
 
-    /// <summary>Клиент по настройкам. Бросает AiException, если чего-то не хватает.</summary>
-    public static IAiClient Create(AppSettings s) => s.AiProvider switch
+    /// <summary>
+    /// Проверка связи по прогнозу погоды (задаёт приложение). Если в настройках включено AiRequireWeather,
+    /// каждый клиент из Create — за этим «шлагбаумом»: без прогноза запросы к ИИ не уходят.
+    /// </summary>
+    public static ConnectivityGate? Gate { get; set; }
+
+    /// <summary>Клиент по настройкам (за проверкой связи, если она включена). Бросает AiException, если чего-то не хватает.</summary>
+    public static IAiClient Create(AppSettings s)
+    {
+        var client = CreateDirect(s);
+        return s.AiRequireWeather && Gate is { } gate ? new GatedAiClient(client, gate) : client;
+    }
+
+    static IAiClient CreateDirect(AppSettings s) => s.AiProvider switch
     {
         AiProvider.ClaudeCode => new ClaudeCodeClient(s.AiClaudePath, s.AiClaudeModel),
         AiProvider.Anthropic => new AnthropicAiClient(Need(s.AiAnthropicKey, "Укажи API-ключ Anthropic."),

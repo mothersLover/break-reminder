@@ -91,6 +91,7 @@ public sealed class AppSettings
     public string AiOllamaUrl = AiClients.DefaultOllamaUrl;
     public string AiOllamaModel = "";
     public bool AiHintsFirst = true;         // при проверке заданий — сначала подсказка
+    public bool AiRequireWeather = true;     // запросы к ИИ — только если доступен прогноз погоды (проверка связи)
 
     // ---- занятия по расписанию (нужен включённый помощник) ----
     public bool PracticeOn = true;
@@ -204,6 +205,7 @@ public sealed class AppSettings
             s.AiOllamaUrl = Str(d, "AiOllamaUrl", s.AiOllamaUrl);
             s.AiOllamaModel = Str(d, "AiOllamaModel", s.AiOllamaModel);
             s.AiHintsFirst = Bool(d, "AiHintsFirst", s.AiHintsFirst);
+            s.AiRequireWeather = Bool(d, "AiRequireWeather", s.AiRequireWeather);
             s.PracticeOn = Bool(d, "PracticeOn", s.PracticeOn);
             s.PracticeMorning = Bool(d, "PracticeMorning", s.PracticeMorning);
             s.PracticeMorningMin = Int(d, "PracticeMorningMin", s.PracticeMorningMin, 1, 60);
@@ -317,6 +319,7 @@ public sealed class AppSettings
             W("AiOllamaUrl", OneLine(AiOllamaUrl));
             W("AiOllamaModel", OneLine(AiOllamaModel));
             B("AiHintsFirst", AiHintsFirst);
+            B("AiRequireWeather", AiRequireWeather);
             B("PracticeOn", PracticeOn);
             B("PracticeMorning", PracticeMorning);
             W("PracticeMorningMin", PracticeMorningMin);

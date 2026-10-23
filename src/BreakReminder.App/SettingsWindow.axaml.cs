@@ -186,6 +186,7 @@ public partial class SettingsWindow : Window
         AiOllamaUrlBox.Text = s.AiOllamaUrl;
         AiOllamaModelBox.Text = s.AiOllamaModel;
         AiHintsCheck.IsChecked = s.AiHintsFirst;
+        AiWeatherGateCheck.IsChecked = s.AiRequireWeather;
         PracticeCheck.IsChecked = s.PracticeOn;
         PracticeMorningCheck.IsChecked = s.PracticeMorning;
         PracticeMorningNum.Value = s.PracticeMorningMin;
@@ -557,6 +558,7 @@ public partial class SettingsWindow : Window
         s.AiOllamaUrl = Or(AiOllamaUrlBox.Text, AiClients.DefaultOllamaUrl);
         s.AiOllamaModel = (AiOllamaModelBox.Text ?? "").Trim();
         s.AiHintsFirst = AiHintsCheck.IsChecked == true;
+        s.AiRequireWeather = AiWeatherGateCheck.IsChecked == true;
         s.SpeechLang = SpeechLang();
         s.SpeechAutoCards = SpeechAutoCheck.IsChecked == true;
         s.ListenInBreak = ListenBreakCheck.IsChecked == true;

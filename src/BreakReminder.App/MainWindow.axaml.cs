@@ -12,7 +12,15 @@ public partial class MainWindow : Window
         AgendaLink.Content = n > 0 ? $"Все задачи на сегодня ({n}) →" : "Все задачи на сегодня →";
 
     /// <summary>Ссылка «Помощник» — только когда ИИ-помощник включён в настройках.</summary>
-    public void SetAssistantVisible(bool on) => AssistantLink.IsVisible = AssistantSep.IsVisible = on;
+    public void SetAssistantVisible(bool on, bool offline = false)
+    {
+        AssistantLink.IsVisible = AssistantSep.IsVisible = on;
+        AssistantLink.Content = offline ? "Помощник (нет связи)" : "Помощник →";
+        AssistantLink.Opacity = offline ? 0.6 : 1;
+        ToolTip.SetTip(AssistantLink, offline
+            ? "Прогноз погоды недоступен — считаю, что связи нет, и к ИИ не обращаюсь. Карточки работают."
+            : "ИИ-помощник: вопросы, проверка заданий, тренировка пройденного");
+    }
 
     public MainWindow()
     {

@@ -81,6 +81,10 @@ public sealed class AssistantWindow : Window
     readonly StackPanel pinsList = new() { Spacing = 6 };
     readonly List<Action> pinSyncs = new();         // обновить 📌 на пузырях, когда закреплённое изменилось
 
+    // ---- нет связи (прогноз погоды недоступен) ----
+    readonly Border offlineBar;
+    readonly TextBlock offlineText = Card.Text("", 13.5, Palette.Text);
+
     /// <summary>Открыть карточки (повторение и список).</summary>
     public event Action? CardsRequested;
 
@@ -200,14 +204,35 @@ public sealed class AssistantWindow : Window
 
         pinsPanel.Content = new ScrollViewer { MaxHeight = 230, Content = pinsList };
 
+        var retry = new Button { Content = "Проверить снова", VerticalAlignment = VerticalAlignment.Center };
+        retry.Click += async (_, _) =>
+        {
+            retry.IsEnabled = false;
+            if (AiClients.Gate is { } g) await g.CheckAsync(force: true);
+            retry.IsEnabled = true;
+            UpdateOnline();
+        };
+        var offlineGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        offlineText.VerticalAlignment = VerticalAlignment.Center;
+        offlineGrid.Children.Add(offlineText);
+        Grid.SetColumn(retry, 1);
+        offlineGrid.Children.Add(retry);
+        offlineBar = new Border
+        {
+            Background = Palette.B(Palette.Card), BorderBrush = Palette.B(Palette.Red), BorderThickness = new Thickness(4, 0, 0, 0),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(14, 8), Margin = new Thickness(0, 12, 0, 0),
+            IsVisible = false, Child = offlineGrid
+        };
+
         var root = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto"), Margin = new Thickness(20, 18, 20, 16) };
         root.Children.Add(header);
         Grid.SetRow(banner, 1);
         root.Children.Add(banner);
         Grid.SetRow(homeworkRow, 1);
         root.Children.Add(homeworkRow);
-        Grid.SetRow(pinsPanel, 2);
-        root.Children.Add(pinsPanel);
+        var middle = new StackPanel { Children = { offlineBar, pinsPanel } };
+        Grid.SetRow(middle, 2);
+        root.Children.Add(middle);
         Grid.SetRow(scroll, 3);
         root.Children.Add(scroll);
         Grid.SetRow(bottom, 4);
@@ -228,6 +253,35 @@ public sealed class AssistantWindow : Window
         UpdateCardsButton();
         RebuildPins();
         Rebuild();
+        Opened += async (_, _) =>
+        {
+            if (settings().AiRequireWeather && AiClients.Gate is { } g) await g.CheckAsync();
+            UpdateOnline();
+        };
+    }
+
+    /// <summary>Показать или спрятать плашку «нет связи» по последней проверке прогноза.</summary>
+    public void UpdateOnline()
+    {
+        bool offline = settings().AiRequireWeather && AiClients.Gate is { Online: false };
+        offlineBar.IsVisible = offline;
+        if (offline)
+            offlineText.Text = "📡 Нет связи — прогноз погоды недоступен. Помощник отключён, запросы не отправляются. " +
+                               "Карточки работают как обычно.";
+    }
+
+    /// <summary>Можно ли сейчас обращаться к ИИ (если включена проверка связи по прогнозу).</summary>
+    async Task<bool> AiAvailable()
+    {
+        if (!settings().AiRequireWeather || AiClients.Gate is not { } g) return true;
+        bool ok = await g.CheckAsync();
+        UpdateOnline();
+        if (!ok)
+        {
+            list.Children.Add(ErrorBubble(ConnectivityGate.OfflineMessage));
+            ScrollToEnd();
+        }
+        return ok;
     }
 
     /// <summary>Панель «Закреплено»: самое новое сверху; щелчок по тексту — развернуть, ✕ — открепить.</summary>
@@ -348,6 +402,7 @@ public sealed class AssistantWindow : Window
     {
         var text = (input.Text ?? "").Trim();
         if ((text.Length == 0 && pending.Count == 0) || cts != null) return;
+        if (!await AiAvailable()) return;   // без связи — текст и фото остаются в поле ввода
         input.Text = "";
         if (practice != null) practiceAnswered = true;
         var images = pending.ToList();
@@ -409,6 +464,11 @@ public sealed class AssistantWindow : Window
     public async Task StartPractice(PracticeKind kind, int minutes)
     {
         if (practice != null) return;
+        if (!await AiAvailable())
+        {
+            PracticeEnded?.Invoke(kind, 0);   // занятие не состоялось — предложим позже
+            return;
+        }
         practice = kind;
         practiceMinutes = minutes;
         practiceStart = DateTime.Now;
