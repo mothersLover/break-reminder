@@ -384,6 +384,9 @@
                 <NumericUpDown Grid.Row="5" Grid.Column="1" x:Name="PracticeEveningNum" Minimum="1" Maximum="120" Width="130" Margin="0,3" />
                 <TextBlock Grid.Row="5" Grid.Column="2" Text="мин" Margin="10,0,0,0" VerticalAlignment="Center" />
               </Grid>
+              <CheckBox x:Name="WeeklyReviewCheck" Margin="0,8,0,0">
+                <TextBlock TextWrapping="Wrap" Text="Итоги недели по воскресеньям вечером: разбор, цели и план на неделю" />
+              </CheckBox>
               <TextBlock Classes="hint" Margin="28,6,0,0"
                          Text="Предлагаю только в удобный момент: ты за компьютером, нет встречи или созвона, не на паузе и не прямо перед перерывом. Мини-тренировки — не чаще раза в 2 часа. Вечернее занятие приходит, даже если рабочий день не начат. Можно отложить на 30 минут или пропустить до завтра." />
 

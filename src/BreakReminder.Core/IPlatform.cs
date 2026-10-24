@@ -32,6 +32,10 @@ public interface IPlatform : IEnvironmentProbe, IDisposable
     void PlayWav(byte[] wav);
     void PlayFile(string path);
     void PlaySystemSound();
+
+    // ---- секреты в настройках ----
+    /// <summary>Шифрование ключей и ссылок в settings.ini, или null — на этой ОС не шифруем (файл защищён правами).</summary>
+    ISecretProtector? Secrets { get; }
     void StopSound();
 
     // ---- озвучка ----

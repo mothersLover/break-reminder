@@ -16,9 +16,14 @@ public partial class StatsWindow : Window
 
     public StatsWindow() : this(new Dictionary<DateTime, DayStat>(), null, null!, "") { }
 
-    public StatsWindow(Dictionary<DateTime, DayStat> history, DayStat? liveToday, IPlatform platform, string historyFile)
+    /// <param name="learning">Вкладка «Учёба» (null — без неё); openLearning — открыть сразу её.</param>
+    public StatsWindow(Dictionary<DateTime, DayStat> history, DayStat? liveToday, IPlatform platform, string historyFile,
+        Control? learning = null, bool openLearning = false)
     {
         InitializeComponent();
+        LearningTab.IsVisible = learning != null;
+        LearningTab.Content = learning;
+        if (learning != null && openLearning) Tabs.SelectedItem = LearningTab;
         Icon = Icons.Clock(Palette.Blue);
         data = history;
         if (liveToday != null)

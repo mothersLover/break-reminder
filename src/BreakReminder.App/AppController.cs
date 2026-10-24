@@ -18,6 +18,10 @@ public sealed class AppController
     readonly TutorMemory memory = new();
     AssistantWindow? assistant;
     readonly PracticeLog practiceLog = new();
+    readonly GoalStore goals = new();
+    readonly WeeklyReviewStore reviews = new();
+    bool reviewRunning;
+    DateTime reviewAttempt = DateTime.MinValue;
     readonly ConnectivityGate gate;
     readonly CardStore cards = new();
     CardsWindow? cardsWindow;
@@ -42,6 +46,7 @@ public sealed class AppController
         this.desktop = desktop;
         platform = PlatformFactory.Create();
         platform.Initialize();
+        AppSettings.Protector = platform.Secrets;   // ключи API и ссылка на календарь — зашифрованы
         settings = AppSettings.Load();
 
         engine = new WorkDayEngine(settings, platform, history, DateTime.Now);
@@ -56,6 +61,7 @@ public sealed class AppController
         tasks.Changed += () => Render();
         coach = new PracticeCoach(settings, engine, platform, practiceLog);
         coach.Due += OfferPractice;
+        memory.Goals = goals;   // помощник видит цели и сроки
 
         // Связь проверяем по прогнозу погоды: нет прогноза — к ИИ не обращаемся (см. AiClients.Gate).
         // Город из настроек, а если его нет — Москва: важно лишь, отвечает ли сервис прогнозов.
@@ -151,7 +157,11 @@ public sealed class AppController
 
         // Занятия с помощником: проверять, не пора ли, раз в полминуты.
         practiceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-        practiceTimer.Tick += (_, _) => coach.Tick(DateTime.Now);
+        practiceTimer.Tick += (_, _) =>
+        {
+            coach.Tick(DateTime.Now);
+            CheckWeeklyReview();
+        };
         practiceTimer.Start();
 
         // Следующие запуски программы передают сюда команды ("show", "toggle-pause").
@@ -405,6 +415,43 @@ public sealed class AppController
         cardsWindow.Show();
     }
 
+    // ---------- итоги недели ----------
+
+    /// <summary>
+    /// Воскресенье вечером (или до вторника, если пропустил) — помощник подводит итоги недели.
+    /// Только когда человек за компьютером; при неудаче (нет связи) — ещё раз через 30 минут.
+    /// </summary>
+    async void CheckWeeklyReview()
+    {
+        var now = DateTime.Now;
+        if (!settings.AiOn || !settings.WeeklyReview || reviewRunning || now - reviewAttempt < TimeSpan.FromMinutes(30)) return;
+        if (reviews.DueWeek(now) is not { } week) return;
+        if (platform.IsScreenLocked() || platform.IdleTime() >= TimeSpan.FromMinutes(2) || engine.IsBusy(now)) return;
+        reviewAttempt = now;
+        if (await MakeReview(week) is { } r) ShowReview(r);
+    }
+
+    /// <summary>Попросить помощника подвести итоги недели (week — понедельник; null — текущая неделя).</summary>
+    async Task<WeeklyReview?> MakeReview(DateTime? week = null)
+    {
+        if (reviewRunning) return null;
+        reviewRunning = true;
+        try
+        {
+            var now = DateTime.Now;
+            var start = week ?? WeeklyReviewStore.MondayOf(now);
+            var (system, request) = WeeklyReviewStore.BuildRequest(memory, LearningStats.Build(practiceLog, cards, now), goals, start, now);
+            var reply = await AiClients.Create(settings).CompleteAsync(system, new[] { request });
+            var review = WeeklyReviewStore.Parse(reply, start, now);
+            reviews.Add(review);
+            return review;
+        }
+        catch { return null; }   // нет связи, лимит, ошибка сервиса — попробуем позже
+        finally { reviewRunning = false; }
+    }
+
+    void ShowReview(WeeklyReview r) => new WeeklyReviewWindow(r, memory, OpenAssistant).Show();
+
     /// <summary>«Послушай и повтори»: фразы из карточек вслух.</summary>
     void OpenListen() => ListenWindow.Show(cards.ForListening(DateTime.Now, settings.ListenCount), settings, platform);
 
@@ -512,8 +559,13 @@ public sealed class AppController
     async void OpenStats()
     {
         ShowMain();
+        // вкладка «Учёба» — когда помощник включён или уже есть что показать
+        Control? learning = settings.AiOn || practiceLog.Entries.Count > 0 || cards.All.Count > 0
+            ? new LearningPanel(() => LearningStats.Build(practiceLog, cards, DateTime.Now), goals, reviews,
+                settings.AiOn ? () => MakeReview() : null, ShowReview)
+            : null;
         var w = new StatsWindow(history.LoadByDay(), engine.State == WorkState.Idle ? null : engine.TodaySoFar(),
-            platform, history.FilePath);
+            platform, history.FilePath, learning);
         await w.ShowDialog(main);
     }
 

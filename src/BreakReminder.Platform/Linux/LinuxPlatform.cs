@@ -16,6 +16,8 @@ public sealed class LinuxPlatform : IPlatform
 {
     public string Name => "Linux";
 
+    public ISecretProtector? Secrets => null;   // без шифрования: settings.ini читается только владельцем
+
     readonly Cached<TimeSpan> idle;
     readonly Cached<bool> locked, call, fullscreen;
     readonly ProcessSoundPlayer sound;

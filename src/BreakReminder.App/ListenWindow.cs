@@ -184,12 +184,3 @@ public sealed class ListenWindow : Window
         close.Content = "Закрыть";
     }
 }
-
-static class GridExt
-{
-    public static T WithColumn<T>(this T c, int column) where T : Control
-    {
-        Grid.SetColumn(c, column);
-        return c;
-    }
-}

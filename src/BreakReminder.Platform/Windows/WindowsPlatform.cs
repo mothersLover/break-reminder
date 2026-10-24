@@ -15,6 +15,8 @@ public sealed class WindowsPlatform : IPlatform
 {
     public string Name => "Windows";
 
+    public ISecretProtector? Secrets { get; } = new DpapiProtector();
+
     MessageWindow? window;
     Action? hotkeyCallback;
     bool hotkeyRegistered;

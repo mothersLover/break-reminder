@@ -94,6 +94,9 @@ public sealed class TutorMemory
 
     public IReadOnlyList<PinnedNote> Pins => pins;
 
+    /// <summary>Цели человека (задаёт приложение) — помощник видит их в инструкциях вместе со сроками.</summary>
+    public GoalStore? Goals { get; set; }
+
     /// <summary>Закреплённое изменилось — для обновления панели.</summary>
     public event Action? PinsChanged;
 
@@ -155,6 +158,8 @@ public sealed class TutorMemory
             sb.AppendLine().AppendLine("<профиль — человек написал сам>").AppendLine(profile).AppendLine("</профиль>");
         if (notes.Length > 0)
             sb.AppendLine().AppendLine("<заметки о прошлых занятиях — ты вёл их сам>").AppendLine(notes).AppendLine("</заметки>");
+        if (Goals?.PromptLines(now) is { Length: > 0 } goals)
+            sb.AppendLine().AppendLine("<цели человека — подстраивай занятия под сроки>").AppendLine(goals).AppendLine("</цели>");
         if (pins.Count > 0)
         {
             // самое новое — первым; длинное хвостом не тащим

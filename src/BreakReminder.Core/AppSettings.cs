@@ -4,6 +4,14 @@ namespace BreakReminder.Core;
 
 public enum PopupMode { Corner, Center, Fullscreen }
 
+/// <summary>Шифрование секретов в settings.ini (ключи API, ссылка на календарь). Реализация — по ОС.</summary>
+public interface ISecretProtector
+{
+    string Protect(string plain);
+    /// <summary>null — расшифровать не удалось (например, файл перенесли с другого компьютера).</summary>
+    string? Unprotect(string stored);
+}
+
 /// <summary>Настройки. Формат settings.ini совместим со старой (legacy) версией.</summary>
 public sealed class AppSettings
 {
@@ -100,6 +108,7 @@ public sealed class AppSettings
     public int PracticeDayCount = 2;         // мини-тренировок за рабочий день (0 — не надо)
     public int PracticeDayMin = 3;
     public bool PracticeCards = true;        // днём — повторение карточек, если накопились
+    public bool WeeklyReview = true;         // итоги недели от помощника (воскресенье вечером)
 
     // ---- озвучка ----
     public string SpeechLang = "fr";         // на каком языке произносить карточки и фразы помощника
@@ -128,6 +137,30 @@ public sealed class AppSettings
     public TimeSpan AutoEndTime => TimeSpan.FromMinutes(AutoEndMin);
 
     public AppSettings Clone() => (AppSettings)MemberwiseClone();
+
+    /// <summary>
+    /// Чем шифровать секреты (задаёт приложение до Load; null — хранить как есть). Зашифрованное значение
+    /// пишется как «enc:…»; старые незашифрованные читаются и шифруются при следующем сохранении.
+    /// </summary>
+    public static ISecretProtector? Protector { get; set; }
+
+    const string EncPrefix = "enc:";
+
+    static string ReadSecret(Dictionary<string, string> d, string key)
+    {
+        if (!d.TryGetValue(key, out var v) || v.Length == 0) return "";
+        if (!v.StartsWith(EncPrefix)) return v;                         // старый формат — открытым текстом
+        try { return Protector?.Unprotect(v[EncPrefix.Length..]) ?? ""; }
+        catch { return ""; }
+    }
+
+    static string WriteSecret(string value)
+    {
+        value = OneLine(value);
+        if (value.Length == 0 || Protector == null) return value;
+        try { return EncPrefix + Protector.Protect(value); }
+        catch { return value; }
+    }
 
     public static AppSettings Load() => Load(Paths.SettingsFile, Paths.TipsFile, Paths.LongTipsFile);
 
@@ -197,10 +230,10 @@ public sealed class AppSettings
             if (d.TryGetValue("AiProvider", out var ap) && Enum.TryParse(ap, true, out AiProvider prov)) s.AiProvider = prov;
             s.AiClaudePath = Str(d, "AiClaudePath", s.AiClaudePath);
             s.AiClaudeModel = Str(d, "AiClaudeModel", s.AiClaudeModel);
-            s.AiAnthropicKey = Str(d, "AiAnthropicKey", s.AiAnthropicKey);
+            s.AiAnthropicKey = ReadSecret(d, "AiAnthropicKey");
             s.AiAnthropicModel = Str(d, "AiAnthropicModel", s.AiAnthropicModel);
             s.AiOpenAiUrl = Str(d, "AiOpenAiUrl", s.AiOpenAiUrl);
-            s.AiOpenAiKey = Str(d, "AiOpenAiKey", s.AiOpenAiKey);
+            s.AiOpenAiKey = ReadSecret(d, "AiOpenAiKey");
             s.AiOpenAiModel = Str(d, "AiOpenAiModel", s.AiOpenAiModel);
             s.AiOllamaUrl = Str(d, "AiOllamaUrl", s.AiOllamaUrl);
             s.AiOllamaModel = Str(d, "AiOllamaModel", s.AiOllamaModel);
@@ -212,6 +245,7 @@ public sealed class AppSettings
             s.PracticeDayCount = Int(d, "PracticeDayCount", s.PracticeDayCount, 0, 6);
             s.PracticeDayMin = Int(d, "PracticeDayMin", s.PracticeDayMin, 1, 30);
             s.PracticeCards = Bool(d, "PracticeCards", s.PracticeCards);
+            s.WeeklyReview = Bool(d, "WeeklyReview", s.WeeklyReview);
             s.SpeechLang = Str(d, "SpeechLang", s.SpeechLang);
             s.SpeechSlow = Bool(d, "SpeechSlow", s.SpeechSlow);
             s.SpeechAutoCards = Bool(d, "SpeechAutoCards", s.SpeechAutoCards);
@@ -221,7 +255,8 @@ public sealed class AppSettings
             s.PracticeEveningAt = Int(d, "PracticeEveningAt", s.PracticeEveningAt, 0, 24 * 60 - 1);
             s.PracticeEveningMin = Int(d, "PracticeEveningMin", s.PracticeEveningMin, 1, 120);
 
-            if (d.TryGetValue("CalendarUrl", out var v)) s.CalendarUrl = v;
+            s.CalendarUrl = ReadSecret(d, "CalendarUrl");
+            string? v;
             if (d.TryGetValue("Sound", out v)) s.Sound = SoundCatalog.Normalize(v);
             if (d.TryGetValue("CustomSoundPath", out v)) s.CustomSoundPath = v;
             if (d.TryGetValue("Popup", out v) && Enum.TryParse(v, true, out PopupMode p)) s.Popup = p;
@@ -283,7 +318,7 @@ public sealed class AppSettings
             B("CloseToTray", CloseToTray);
             B("PauseHotkey", PauseHotkey);
             B("CalendarOn", CalendarOn);
-            W("CalendarUrl", OneLine(CalendarUrl));
+            W("CalendarUrl", WriteSecret(CalendarUrl));
             B("CalWaitMeetings", CalWaitMeetings);
             B("CalBreakBefore", CalBreakBefore);
             W("CalBreakBeforeMin", CalBreakBeforeMin);
@@ -311,10 +346,10 @@ public sealed class AppSettings
             W("AiProvider", AiProvider);
             W("AiClaudePath", OneLine(AiClaudePath));
             W("AiClaudeModel", OneLine(AiClaudeModel));
-            W("AiAnthropicKey", OneLine(AiAnthropicKey));
+            W("AiAnthropicKey", WriteSecret(AiAnthropicKey));
             W("AiAnthropicModel", OneLine(AiAnthropicModel));
             W("AiOpenAiUrl", OneLine(AiOpenAiUrl));
-            W("AiOpenAiKey", OneLine(AiOpenAiKey));
+            W("AiOpenAiKey", WriteSecret(AiOpenAiKey));
             W("AiOpenAiModel", OneLine(AiOpenAiModel));
             W("AiOllamaUrl", OneLine(AiOllamaUrl));
             W("AiOllamaModel", OneLine(AiOllamaModel));
@@ -326,6 +361,7 @@ public sealed class AppSettings
             W("PracticeDayCount", PracticeDayCount);
             W("PracticeDayMin", PracticeDayMin);
             B("PracticeCards", PracticeCards);
+            B("WeeklyReview", WeeklyReview);
             W("SpeechLang", OneLine(SpeechLang));
             B("SpeechSlow", SpeechSlow);
             B("SpeechAutoCards", SpeechAutoCards);
@@ -341,6 +377,9 @@ public sealed class AppSettings
             W("BtnSkip", OneLine(BtnSkip));
 
             File.WriteAllText(settingsFile, sb.ToString(), Encoding.UTF8);
+            // в файле секреты (ключи, ссылка на календарь): на Linux/macOS — читать может только владелец
+            if (!OperatingSystem.IsWindows())
+                try { File.SetUnixFileMode(settingsFile, UnixFileMode.UserRead | UnixFileMode.UserWrite); } catch { }
             File.WriteAllText(tipsFile, string.Join(Environment.NewLine, TipsShort) + Environment.NewLine, Encoding.UTF8);
             File.WriteAllText(longTipsFile, string.Join(Environment.NewLine, TipsLong) + Environment.NewLine, Encoding.UTF8);
         }

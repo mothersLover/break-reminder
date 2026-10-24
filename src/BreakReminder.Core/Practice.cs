@@ -90,6 +90,19 @@ public sealed class PracticeLog
         return n;
     }
 
+    /// <summary>Самая длинная серия дней подряд за всё время.</summary>
+    public int BestStreak()
+    {
+        var days = entries.Where(e => !e.Skipped).Select(e => e.At.Date).Distinct().OrderBy(d => d).ToList();
+        int best = 0, run = 0;
+        for (int i = 0; i < days.Count; i++)
+        {
+            run = i > 0 && days[i] == days[i - 1].AddDays(1) ? run + 1 : 1;
+            best = Math.Max(best, run);
+        }
+        return best;
+    }
+
     void Append(Entry e)
     {
         entries.Add(e);

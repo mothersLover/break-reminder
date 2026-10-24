@@ -67,3 +67,21 @@ static class WindowExt
 {
     public static IntPtr Handle(this TopLevel w) => w.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
 }
+
+static class ControlExt
+{
+    public static T WithMargin<T>(this T c, double left, double top, double right, double bottom) where T : Control
+    {
+        c.Margin = new Thickness(left, top, right, bottom);
+        return c;
+    }
+}
+
+static class GridExt
+{
+    public static T WithColumn<T>(this T c, int column) where T : Control
+    {
+        Grid.SetColumn(c, column);
+        return c;
+    }
+}

@@ -15,6 +15,8 @@ public sealed class MacPlatform : IPlatform
 {
     public string Name => "macOS";
 
+    public ISecretProtector? Secrets => null;   // без шифрования: settings.ini читается только владельцем
+
     readonly Cached<bool> locked, call;
     readonly ProcessSoundPlayer sound = new(path => Cmd.Start("/usr/bin/afplay", Cmd.Quote(path)));
 
