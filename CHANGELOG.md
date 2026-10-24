@@ -2,6 +2,8 @@
 
 Все заметные изменения проекта. Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
+## [Unreleased]
+
 ## [5.6.0] — 2026-10-24
 
 ### Добавлено
@@ -231,7 +233,8 @@
 - Статистика по неделям, настраиваемые тексты уведомлений.
 - Автоматическое начало и конец рабочего дня по расписанию.
 
-[Unreleased]: https://github.com/mothersLover/break-reminder/compare/v5.5.1...HEAD
+[Unreleased]: https://github.com/mothersLover/break-reminder/compare/v5.6.0...HEAD
+[5.6.0]: https://github.com/mothersLover/break-reminder/compare/v5.5.1...v5.6.0
 [5.5.1]: https://github.com/mothersLover/break-reminder/compare/v5.5.0...v5.5.1
 [5.5.0]: https://github.com/mothersLover/break-reminder/compare/v5.4.0...v5.5.0
 [5.4.0]: https://github.com/mothersLover/break-reminder/compare/v5.3.0...v5.4.0
