@@ -9,7 +9,7 @@ public static class SpeechText
     public static readonly (string Code, string Name)[] Languages =
     {
         ("fr", "Французский"), ("en", "Английский"), ("de", "Немецкий"), ("es", "Испанский"),
-        ("it", "Итальянский"), ("pt", "Португальский"), ("ru", "Русский")
+        ("it", "Итальянский"), ("pt", "Португальский"), ("ru", "Русский"), ("", "Без озвучки")
     };
 
     public static string Name(string code) => Languages.FirstOrDefault(l => l.Code == code).Name ?? code;
@@ -63,7 +63,7 @@ public static class SpeechText
     public static bool HasCyrillic(string s) => Cyrillic.IsMatch(s ?? "");
 
     /// <summary>Как поставить голос, если его нет (по названию платформы из IPlatform.Name).</summary>
-    public static string InstallHint(string platform, string lang) => platform switch
+    public static string InstallHint(string platform, string lang) => lang == "" ? "Для этого хобби озвучка выключена." : platform switch
     {
         "Windows" => $"В системе нет голоса для языка «{Name(lang)}». Поставь его: Параметры → Время и язык → Язык и регион → " +
                      $"добавить {Name(lang).ToLowerInvariant()} язык (с речью) или Параметры → Время и язык → Речь → «Добавить голоса». " +

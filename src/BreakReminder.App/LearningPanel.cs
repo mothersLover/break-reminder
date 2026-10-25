@@ -24,9 +24,13 @@ public sealed class LearningPanel : UserControl
     readonly CalendarDatePicker goalDate = new() { SelectedDate = DateTime.Today.AddDays(30), Width = 150 };
     readonly TextBlock reviewStatus = Card.Text("", 12.5, Palette.Muted);
 
+    readonly string? hobby;
+
+    /// <param name="hobby">Название хобби, по которому статистика (карточки, цели, итоги — у каждого хобби свои).</param>
     public LearningPanel(Func<LearningStats> stats, GoalStore goals, WeeklyReviewStore reviews,
-        Func<Task<WeeklyReview?>>? makeReview, Action<WeeklyReview> showReview)
+        Func<Task<WeeklyReview?>>? makeReview, Action<WeeklyReview> showReview, string? hobby = null)
     {
+        this.hobby = hobby;
         this.stats = stats;
         this.goals = goals;
         this.reviews = reviews;
@@ -43,6 +47,9 @@ public sealed class LearningPanel : UserControl
     {
         var s = stats();
         body.Children.Clear();
+        if (hobby != null)
+            body.Children.Add(Card.Text($"Хобби: {hobby} — карточки, цели и итоги этого хобби; минуты и серия — по всем. " +
+                                        "Хобби переключается в окне помощника.", 12.5, Palette.Muted));
 
         // ---- плитки ----
         var tiles = new UniformGrid { Columns = 4 };

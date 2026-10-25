@@ -97,6 +97,9 @@ public sealed class TutorMemory
     /// <summary>Цели человека (задаёт приложение) — помощник видит их в инструкциях вместе со сроками.</summary>
     public GoalStore? Goals { get; set; }
 
+    /// <summary>Название хобби, к которому относится эта память (для инструкций), или null.</summary>
+    public string? Hobby { get; set; }
+
     /// <summary>Закреплённое изменилось — для обновления панели.</summary>
     public event Action? PinsChanged;
 
@@ -147,6 +150,8 @@ public sealed class TutorMemory
         sb.AppendLine();
         sb.Append("Сегодня ").Append(now.ToString("dddd, d MMMM yyyy, HH:mm", Ru)).AppendLine(".");
         if (s.UserName.Length > 0) sb.Append("Человека зовут ").Append(s.UserName).AppendLine(".");
+        if (!string.IsNullOrEmpty(Hobby))
+            sb.Append("Этот разговор — про хобби «").Append(Hobby).AppendLine("». Другие хобби обсуждаются в отдельных разговорах.");
 
         if (profile.Length == 0 && notes.Length == 0)
         {

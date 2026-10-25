@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using BreakReminder.Core;
 
@@ -36,6 +37,11 @@ public partial class MainWindow : Window
         AssistantLink.Click += (_, _) => AssistantClicked?.Invoke();
         ToolTip.SetTip(AssistantLink, "ИИ-помощник: вопросы, проверка заданий, тренировка пройденного");
         ToolTip.SetTip(StatsButton, "Статистика по неделям");
+        // у круглых кнопок внутри значки — имена для экранного диктора
+        AutomationProperties.SetName(MainButton, "Начать или закончить рабочий день");
+        AutomationProperties.SetName(PauseButton, "Пауза");
+        AutomationProperties.SetName(StatsButton, "Статистика");
+        AutomationProperties.SetName(SettingsButton, "Настройки");
         ToolTip.SetTip(SettingsButton, "Настройки");
     }
 

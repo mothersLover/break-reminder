@@ -15,15 +15,22 @@ public sealed class AppController
     readonly FileHistoryStore history = new();
     readonly TaskStore tasks = new();
     AgendaWindow? agenda;
-    readonly TutorMemory memory = new();
+    // Хобби: у каждого своя память помощника, карточки, цели и итоги недели (всё — в space выбранного хобби).
+    readonly HobbyStore hobbies;
+    HobbySpace space;
+    TutorMemory memory => space.Memory;
+    CardStore cards => space.Cards;
+    GoalStore goals => space.Goals;
+    WeeklyReviewStore reviews => space.Reviews;
     AssistantWindow? assistant;
     readonly PracticeLog practiceLog = new();
-    readonly GoalStore goals = new();
-    readonly WeeklyReviewStore reviews = new();
+    readonly HabitStore habits = new();
+    readonly HabitCoach habitCoach;
+    HabitsWindow? habitsWindow;
+    HabitAlertWindow? habitAlert;
     bool reviewRunning;
     DateTime reviewAttempt = DateTime.MinValue;
     readonly ConnectivityGate gate;
-    readonly CardStore cards = new();
     CardsWindow? cardsWindow;
     readonly PracticeCoach coach;
     PracticeOfferWindow? practiceOffer;
@@ -48,6 +55,9 @@ public sealed class AppController
         platform.Initialize();
         AppSettings.Protector = platform.Secrets;   // ключи API и ссылка на календарь — зашифрованы
         settings = AppSettings.Load();
+        hobbies = new HobbyStore(settings.SpeechLang);
+        space = HobbySpace.Open(hobbies, hobbies.Active);
+        settings.SpeechLang = hobbies.Active.Lang;   // язык озвучки — у каждого хобби свой
 
         engine = new WorkDayEngine(settings, platform, history, DateTime.Now);
         engine.ReminderDue += ShowReminder;
@@ -61,7 +71,8 @@ public sealed class AppController
         tasks.Changed += () => Render();
         coach = new PracticeCoach(settings, engine, platform, practiceLog);
         coach.Due += OfferPractice;
-        memory.Goals = goals;   // помощник видит цели и сроки
+        habitCoach = new HabitCoach(habits, engine, platform) { Enabled = settings.HabitReminders };
+        habitCoach.Due += ShowHabitAlert;
 
         // Связь проверяем по прогнозу погоды: нет прогноза — к ИИ не обращаемся (см. AiClients.Gate).
         // Город из настроек, а если его нет — Москва: важно лишь, отвечает ли сервис прогнозов.
@@ -160,6 +171,7 @@ public sealed class AppController
         practiceTimer.Tick += (_, _) =>
         {
             coach.Tick(DateTime.Now);
+            habitCoach.Tick(DateTime.Now);
             CheckWeeklyReview();
         };
         practiceTimer.Start();
@@ -260,13 +272,21 @@ public sealed class AppController
         ShowMain();
         var w = new SettingsWindow(settings, platform, calendarStatus, engine.Meetings, memory);
         w.ListenRequested += s => ListenWindow.Show(cards.ForListening(DateTime.Now, s.ListenCount), s, platform);
+        w.HabitsRequested += OpenHabits;
         var result = await w.ShowDialog<AppSettings?>(main);
         if (result == null) return;
         bool calendarChanged = result.CalendarOn != settings.CalendarOn || result.CalendarUrl != settings.CalendarUrl;
         settings = result;
         settings.Save();
+        if (hobbies.Active.Lang != settings.SpeechLang)
+        {
+            // язык озвучки в настройках — это язык выбранного хобби
+            hobbies.Active.Lang = settings.SpeechLang;
+            hobbies.Update(hobbies.Active);
+        }
         engine.Settings = settings;
         coach.Settings = settings;
+        habitCoach.Enabled = settings.HabitReminders;
         platform.SetAutostart(w.AutostartChecked);
         ApplyHotkey();
         if (calendarChanged) RefreshCalendar();
@@ -365,7 +385,8 @@ public sealed class AppController
             agenda.Activate();
             return;
         }
-        agenda = new AgendaWindow(tasks, () => engine.Meetings, settings.CalendarOn, () => calendarStatus, platform);
+        agenda = new AgendaWindow(tasks, () => engine.Meetings, settings.CalendarOn, () => calendarStatus, platform,
+            new HabitStrip(habits, h => habitCoach.Marked(h.Id, DateTime.Now), OpenHabits));
         agenda.Closed += (_, _) => agenda = null;
         agenda.Show();
     }
@@ -381,7 +402,9 @@ public sealed class AppController
             assistant.Activate();
             return;
         }
-        assistant = new AssistantWindow(() => settings, memory, cards, platform);
+        assistant = new AssistantWindow(() => settings, memory, cards, platform, hobbies);
+        assistant.HobbySwitchRequested += SwitchHobby;
+        assistant.HobbyEditRequested += EditHobby;
         assistant.CardsRequested += () => OpenCards();
         assistant.Closed += (_, _) => assistant = null;
         assistant.PracticeEnded += (kind, minutes) =>
@@ -413,6 +436,105 @@ public sealed class AppController
             else coach.Abandoned(k, DateTime.Now);
         };
         cardsWindow.Show();
+    }
+
+    // ---------- хобби ----------
+
+    /// <summary>Переключиться на другое хобби: окна помощника и карточек открываются заново уже с его данными.</summary>
+    async void SwitchHobby(string id)
+    {
+        if (assistant?.InPractice == true)
+        {
+            await ConfirmDialog.Info(assistant, "Сейчас идёт занятие — закончи его, потом переключайся на другое хобби.");
+            return;
+        }
+        hobbies.SetActive(id);
+        space = HobbySpace.Open(hobbies, hobbies.Active);
+        settings.SpeechLang = hobbies.Active.Lang;
+        settings.Save();
+        cardsWindow?.Close();
+        assistant?.Close();      // при закрытии заметки старого хобби обновятся по его же разговору
+        OpenAssistant();
+        Render();
+    }
+
+    /// <summary>Новое хобби (null) или изменение/удаление текущего.</summary>
+    async void EditHobby(Hobby? hobby)
+    {
+        if (assistant == null) return;
+        var r = await new HobbyDialog(hobby, hobby != null && hobby.Id != HobbyStore.MainId && hobbies.All.Count > 1)
+            .ShowDialog<HobbyDialog.Result?>(assistant);
+        if (r == null) return;
+        if (hobby == null)
+        {
+            SwitchHobby(hobbies.Add(r.Name, r.Emoji, r.Lang).Id);
+        }
+        else if (r.Delete)
+        {
+            assistant.Close();
+            cardsWindow?.Close();
+            hobbies.Remove(hobby.Id);
+            space = HobbySpace.Open(hobbies, hobbies.Active);
+            settings.SpeechLang = hobbies.Active.Lang;
+            settings.Save();
+            OpenAssistant();
+        }
+        else
+        {
+            hobby.Name = r.Name;
+            hobby.Emoji = string.IsNullOrWhiteSpace(r.Emoji) ? hobby.Emoji : r.Emoji.Trim();
+            hobby.Lang = r.Lang;
+            hobbies.Update(hobby);
+            space.Memory.Hobby = hobby.Name;
+            settings.SpeechLang = hobby.Lang;
+            settings.Save();
+            assistant.Close();
+            OpenAssistant();
+        }
+        Render();
+    }
+
+    // ---------- привычки ----------
+
+    void OpenHabits()
+    {
+        if (habitsWindow != null)
+        {
+            habitsWindow.Activate();
+            return;
+        }
+        habitsWindow = new HabitsWindow(habits);
+        habitsWindow.Closed += (_, _) => habitsWindow = null;
+        habitsWindow.Show();
+    }
+
+    /// <summary>Пора напомнить о привычке — окошко в углу.</summary>
+    void ShowHabitAlert(Habit h)
+    {
+        habitAlert?.Close();
+        var now = DateTime.Now;
+        habitAlert = new HabitAlertWindow(h, habits.Count(h.Id, now), habits.Streak(h, now), settings, platform);
+        habitAlert.Answered += choice =>
+        {
+            habitAlert = null;
+            var t = DateTime.Now;
+            switch (choice)
+            {
+                case HabitChoice.Done:
+                    habits.Mark(h.Id, t);
+                    habitCoach.Marked(h.Id, t);
+                    habitCoach.Answered();
+                    break;
+                case HabitChoice.Later:
+                    habitCoach.Snooze(h.Id, t);
+                    break;
+                default:
+                    habits.Skip(h.Id, t);
+                    habitCoach.Answered();
+                    break;
+            }
+        };
+        habitAlert.Show();
     }
 
     // ---------- итоги недели ----------
@@ -515,7 +637,8 @@ public sealed class AppController
         string dayInfo = $"Перерыв каждые {settings.IntervalMin} мин"
                          + (settings.AutoDay ? $" · автозавершение в {DateTime.Today + settings.AutoEndTime:HH:mm}" : "")
                          + (auto ? " · день начат автоматически" : "")
-                         + (coach.PlanLine(engine.DayStart) is { } plan ? "\n" + plan : "");
+                         + (coach.PlanLine(engine.DayStart) is { } plan ? "\n" + plan : "")
+                         + (habits.PlanLine() is { } habitPlan ? "\n" + habitPlan : "");
         var w = new GreetingWindow(settings, engine.Meetings, DayPlan.Load(DateTime.Today), dayInfo,
             tasks.ForDay(DateTime.Today).Where(t => !t.Done).ToList(),
             settings.AiOn ? cards.WordOfDay(DateTime.Today) : null, settings.AiOn ? cards.DueCount(DateTime.Now) : 0);
@@ -550,8 +673,11 @@ public sealed class AppController
             if (auto) ToastWindow.Show("Рабочий день завершён: " + Format.Minutes(report.Worked) + " работы");
             return;
         }
+        var (habitsDone, habitsTotal) = habits.Progress(report.End);
+        var streaks = string.Join(" ", habits.All.Select(h => (h, n: habits.Streak(h, report.End))).Where(x => x.n > 1).Select(x => $"{x.h.Emoji}{x.n}"));
         var w = new DayReportWindow(report, history.LoadByDay(), settings,
-            settings.AiOn && settings.PracticeOn ? (practiceLog.MinutesOn(report.End), practiceLog.Streak(report.End)) : null);
+            settings.AiOn && settings.PracticeOn ? (practiceLog.MinutesOn(report.End), practiceLog.Streak(report.End)) : null,
+            (habitsDone, habitsTotal, streaks.Length > 0 ? "серии: " + streaks : null));
         w.StatsRequested += () => { w.Close(); OpenStats(); };
         w.Show();
     }
@@ -562,7 +688,7 @@ public sealed class AppController
         // вкладка «Учёба» — когда помощник включён или уже есть что показать
         Control? learning = settings.AiOn || practiceLog.Entries.Count > 0 || cards.All.Count > 0
             ? new LearningPanel(() => LearningStats.Build(practiceLog, cards, DateTime.Now), goals, reviews,
-                settings.AiOn ? () => MakeReview() : null, ShowReview)
+                settings.AiOn ? () => MakeReview() : null, ShowReview, hobbies.All.Count > 1 ? hobbies.Active.Label : null)
             : null;
         var w = new StatsWindow(history.LoadByDay(), engine.State == WorkState.Idle ? null : engine.TodaySoFar(),
             platform, history.FilePath, learning);
@@ -640,6 +766,8 @@ public sealed class AppController
         updateTimer.Stop();
         practiceTimer.Stop();
         practiceOffer?.Close();
+        habitAlert?.Close();
+        habitsWindow?.Close();
         cardsWindow?.Close();
         updateWindow?.Close();
         assistant?.Close();

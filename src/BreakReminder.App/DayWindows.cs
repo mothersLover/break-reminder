@@ -243,7 +243,8 @@ public sealed class DayReportWindow : Window
     public event Action? StatsRequested;
 
     /// <param name="practice">Занятия с помощником за день: минуты и серия дней (null — занятия выключены).</param>
-    public DayReportWindow(DayReport r, Dictionary<DateTime, DayStat> history, AppSettings s, (int Minutes, int Streak)? practice = null)
+    public DayReportWindow(DayReport r, Dictionary<DateTime, DayStat> history, AppSettings s, (int Minutes, int Streak)? practice = null,
+        (int Done, int Total, string? Streaks)? habits = null)
     {
         Title = "Итоги дня";
         Icon = Icons.Clock(Palette.Green);
@@ -283,6 +284,12 @@ public sealed class DayReportWindow : Window
             bool left = tiles.Children.Count % 2 == 0;
             tiles.Children.Add(Tile("Занятия", p.Minutes > 0 ? p.Minutes + " мин" : "сегодня не было",
                 p.Streak > 0 ? $"серия {GreetingWindow.Plural(p.Streak, "день", "дня", "дней")} подряд" : null,
+                left ? new Thickness(0, 5, 5, 0) : new Thickness(5, 5, 0, 0)));
+        }
+        if (habits is { Total: > 0 } hb)
+        {
+            bool left = tiles.Children.Count % 2 == 0;
+            tiles.Children.Add(Tile("Привычки", $"{hb.Done} из {hb.Total}", hb.Streaks,
                 left ? new Thickness(0, 5, 5, 0) : new Thickness(5, 5, 0, 0)));
         }
         body.Children.Add(tiles);

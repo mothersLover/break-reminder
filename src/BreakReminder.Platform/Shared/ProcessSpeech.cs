@@ -18,11 +18,11 @@ sealed class ProcessSpeech
         this.command = command;
     }
 
-    public string? VoiceFor(string lang) => voiceFor(lang);
+    public string? VoiceFor(string lang) => string.IsNullOrEmpty(lang) ? null : voiceFor(lang);   // "" — без озвучки
 
     public async Task<bool> SpeakAsync(string text, string lang, bool slow, CancellationToken ct)
     {
-        var voice = voiceFor(lang);
+        var voice = VoiceFor(lang);
         if (voice == null || string.IsNullOrWhiteSpace(text)) return false;
         Stop();
         var psi = command(text, lang, slow, voice);

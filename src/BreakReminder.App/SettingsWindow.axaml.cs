@@ -123,6 +123,8 @@ public partial class SettingsWindow : Window
         ReportCheck.IsChecked = s.DayReport;
         TaskAlertCheck.IsChecked = s.TaskAlerts;
         TaskAlertNum.Value = s.TaskAlertMin;
+        HabitRemindCheck.IsChecked = s.HabitReminders;
+        HabitsButton.Click += (_, _) => HabitsRequested?.Invoke();
         TaskAlertCheck.IsCheckedChanged += (_, _) => UpdateEnabled();
         WeatherCheck.IsChecked = s.Weather;
         CityBox.Text = s.WeatherCity;
@@ -381,6 +383,9 @@ public partial class SettingsWindow : Window
     /// <summary>«Послушать сейчас» — открыть «Послушай и повтори» с текущими (ещё не сохранёнными) настройками.</summary>
     public event Action<AppSettings>? ListenRequested;
 
+    /// <summary>«Настроить привычки…».</summary>
+    public event Action? HabitsRequested;
+
     string SpeechLang() => SpeechText.Languages[Math.Max(0, SpeechLangCombo.SelectedIndex)].Code;
 
     void ShowVoice()
@@ -538,6 +543,7 @@ public partial class SettingsWindow : Window
         s.DayReport = ReportCheck.IsChecked == true;
         s.TaskAlerts = TaskAlertCheck.IsChecked == true;
         s.TaskAlertMin = N(TaskAlertNum, s.TaskAlertMin);
+        s.HabitReminders = HabitRemindCheck.IsChecked == true;
         s.Weather = WeatherCheck.IsChecked == true;
         s.WeatherCity = (CityBox.Text ?? "").Trim();
         s.WeatherLat = placeLat;

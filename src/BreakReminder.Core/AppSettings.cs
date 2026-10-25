@@ -78,6 +78,7 @@ public sealed class AppSettings
     // ---- свои задачи ----
     public bool TaskAlerts = true;           // напоминать о задачах со временем
     public int TaskAlertMin = 5;             // за сколько минут (0 — ровно во время)
+    public bool HabitReminders = true;       // напоминать о привычках (вода, прогулка…)
 
     public bool HasWeatherPlace => !double.IsNaN(WeatherLat) && !double.IsNaN(WeatherLon);
 
@@ -221,6 +222,7 @@ public sealed class AppSettings
 
             s.TaskAlerts = Bool(d, "TaskAlerts", s.TaskAlerts);
             s.TaskAlertMin = Int(d, "TaskAlertMin", s.TaskAlertMin, 0, 120);
+            s.HabitReminders = Bool(d, "HabitReminders", s.HabitReminders);
 
             s.UpdateOnStart = Bool(d, "UpdateOnStart", s.UpdateOnStart);
             s.UpdateDaily = Bool(d, "UpdateDaily", s.UpdateDaily);
@@ -339,6 +341,7 @@ public sealed class AppSettings
             W("WeatherLon", HasWeatherPlace ? WeatherLon.ToString(System.Globalization.CultureInfo.InvariantCulture) : "");
             B("TaskAlerts", TaskAlerts);
             W("TaskAlertMin", TaskAlertMin);
+            B("HabitReminders", HabitReminders);
             B("UpdateOnStart", UpdateOnStart);
             B("UpdateDaily", UpdateDaily);
             W("UpdateSkipVersion", OneLine(UpdateSkipVersion));

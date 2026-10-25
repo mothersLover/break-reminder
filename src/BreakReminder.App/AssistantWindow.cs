@@ -39,9 +39,15 @@ public sealed partial class AssistantWindow : Window
     /// <summary>Открыть карточки (повторение и список).</summary>
     public event Action? CardsRequested;
 
+    /// <summary>Выбрали другое хобби.</summary>
+    public event Action<string>? HobbySwitchRequested;
+    /// <summary>«＋ Новое хобби…» (null) или «Изменить…» (текущее).</summary>
+    public event Action<Hobby?>? HobbyEditRequested;
+
     readonly IPlatform? platform;
 
-    public AssistantWindow(Func<AppSettings> settings, TutorMemory memory, CardStore cards, IPlatform? platform = null)
+    public AssistantWindow(Func<AppSettings> settings, TutorMemory memory, CardStore cards, IPlatform? platform = null,
+        HobbyStore? hobbies = null)
     {
         this.platform = platform;
         this.settings = settings;
@@ -70,7 +76,7 @@ public sealed partial class AssistantWindow : Window
         header.Children.Add(new StackPanel
         {
             Spacing = 2,
-            Children = { Card.Text("Помощник", 26, Palette.Text, FontWeight.Bold), subtitle }
+            Children = { HobbyTitle(hobbies), subtitle }
         });
         Grid.SetColumn(cardsButton, 1);
         cardsButton.VerticalAlignment = VerticalAlignment.Center;
@@ -203,6 +209,39 @@ public sealed partial class AssistantWindow : Window
         };
     }
 
+    /// <summary>
+    /// Заголовок: «Помощник» или (если хобби есть) «📘 Французский ▾» — щелчок открывает список хобби,
+    /// «＋ Новое хобби…» и «Изменить…».
+    /// </summary>
+    Control HobbyTitle(HobbyStore? hobbies)
+    {
+        if (hobbies == null) return Card.Text("Помощник", 26, Palette.Text, FontWeight.Bold);
+        var title = new Button
+        {
+            Content = hobbies.Active.Label + "  ▾", FontSize = 24, FontWeight = FontWeight.Bold, Padding = new Thickness(0),
+            Background = Brushes.Transparent, Foreground = Palette.B(Palette.Text), HorizontalAlignment = HorizontalAlignment.Left
+        };
+        ToolTip.SetTip(title, "Хобби: у каждого своя переписка, заметки, карточки и цели");
+        var menu = new ContextMenu { Placement = PlacementMode.BottomEdgeAlignedLeft };   // под заголовком, а не у указателя
+        foreach (var h in hobbies.All)
+        {
+            var item = new MenuItem { Header = (h.Id == hobbies.Active.Id ? "✓ " : "    ") + h.Label };
+            string id = h.Id;
+            item.Click += (_, _) => { if (id != hobbies.Active.Id) HobbySwitchRequested?.Invoke(id); };
+            menu.Items.Add(item);
+        }
+        menu.Items.Add(new Separator());
+        var add = new MenuItem { Header = "＋ Новое хобби…" };
+        add.Click += (_, _) => HobbyEditRequested?.Invoke(null);
+        var edit = new MenuItem { Header = "Изменить «" + hobbies.Active.Name + "»…" };
+        edit.Click += (_, _) => HobbyEditRequested?.Invoke(hobbies.Active);
+        menu.Items.Add(add);
+        menu.Items.Add(edit);
+        title.ContextMenu = menu;
+        title.Click += (_, _) => menu.Open(title);
+        return title;
+    }
+
     /// <summary>Показать или спрятать плашку «нет связи» по последней проверке прогноза.</summary>
     public void UpdateOnline()
     {
@@ -249,9 +288,13 @@ public sealed partial class AssistantWindow : Window
     {
         var s = settings();
         string hi = s.UserName.Length > 0 ? $"Привет, {s.UserName}!" : "Привет!";
+        // для отдельного хобби — про него, иначе общий пример
+        string ask = !string.IsNullOrEmpty(memory.Hobby) && cards.All.Count == 0 && !SpeechText.Languages.Any(l => l.Name == memory.Hobby)
+            ? $" Расскажи про «{memory.Hobby}»: что уже умеешь, чем занимаешься сейчас и чего хочешь добиться.\n\n"
+            : " Я помогаю с хобби, привычками и учёбой. Расскажи, чем занимаешься и чего хочешь добиться — " +
+              "например: «Учу французский по Édito A2, дошёл до Unité 5, хочу свободнее говорить на работе».\n\n";
         return memory.Profile.Length == 0 && memory.Notes.Length == 0
-            ? hi + " Я помогаю с хобби, привычками и учёбой. Расскажи, чем занимаешься и чего хочешь добиться — " +
-              "например: «Учу французский по Édito A2, дошёл до Unité 5, хочу свободнее говорить на работе».\n\n" +
+            ? hi + ask +
               "Я запомню это и буду помогать: объяснять, проверять домашние задания, гонять по пройденному. " +
               "Что я о тебе знаю, можно посмотреть и поправить в «Памяти»."
             : hi + " Над чем сегодня работаем? Можно задать вопрос, прислать упражнение на проверку или попросить потренировать пройденное.";

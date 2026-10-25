@@ -150,6 +150,12 @@
               </Grid>
               <TextBlock Classes="hint" Margin="0,4,0,0"
                          Text="0 — ровно во время. Задачи добавляются по ссылке «Все задачи на сегодня» на главном экране; напоминания приходят, даже если рабочий день не начат." />
+
+              <TextBlock Classes="h" Text="Привычки" />
+              <CheckBox x:Name="HabitRemindCheck" Content="Напоминать о привычках (вода, прогулка, чтение…)" />
+              <TextBlock Classes="hint" Margin="28,2,0,0"
+                         Text="Только в удобный момент: не на встрече и не во время созвона. Отмечать — щелчком в окне «Все задачи на сегодня»." />
+              <Button x:Name="HabitsButton" Content="Настроить привычки…" Margin="0,8,0,0" />
             </StackPanel>
 
             <StackPanel Grid.Column="2">

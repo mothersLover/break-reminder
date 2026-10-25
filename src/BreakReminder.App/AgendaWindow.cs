@@ -27,7 +27,8 @@ public sealed class AgendaWindow : Window
     readonly HashSet<string> expanded = new();   // раскрытые описания встреч
     readonly DispatcherTimer refresh = new() { Interval = TimeSpan.FromMinutes(1) };
 
-    public AgendaWindow(TaskStore store, Func<IReadOnlyList<Meeting>> meetings, bool calendarOn, Func<string> calendarStatus, IPlatform platform)
+    public AgendaWindow(TaskStore store, Func<IReadOnlyList<Meeting>> meetings, bool calendarOn, Func<string> calendarStatus, IPlatform platform,
+        HabitStrip? habits = null)
     {
         this.store = store;
         this.meetings = meetings;
@@ -55,6 +56,7 @@ public sealed class AgendaWindow : Window
                 Card.Text(char.ToUpper(date[0]) + date[1..], 14, Palette.Muted)
             }
         };
+        if (habits != null) header.Children.Add(habits.WithMargin(0, 12, 0, 0));
 
         // ---- добавление задачи ----
         var next = now.Date.AddMinutes(Math.Ceiling(now.TimeOfDay.TotalMinutes / 30) * 30 + 30);

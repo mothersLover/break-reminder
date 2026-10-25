@@ -29,6 +29,7 @@ sealed class WindowsSpeech : IDisposable
 
     public string? VoiceFor(string lang)
     {
+        if (string.IsNullOrEmpty(lang)) return null;   // "" — без озвучки
         try
         {
             return Synth.GetInstalledVoices()
