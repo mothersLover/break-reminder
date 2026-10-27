@@ -271,6 +271,7 @@ public sealed class HabitAlertWindow : Window
 
     public HabitAlertWindow(Habit h, int count, int streak, AppSettings s, IPlatform platform)
     {
+        PopupDrag.Enable(this, "habit");
         Title = h.Label;
         Icon = Icons.Clock(Palette.Green);
         SystemDecorations = SystemDecorations.None;
@@ -325,7 +326,7 @@ public sealed class HabitAlertWindow : Window
                 var wa = screen.WorkingArea;
                 double k = screen.Scaling;
                 int y = wa.Y + (int)(16 * k) + (MeetingWindow.IsOpen ? (int)(210 * k) : 0);
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y);
+                Position = PopupDrag.Place(this, "habit", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y));
             }
             Opacity = 1;
             if (s.SoundOn) platform.PlayWav(Synth.Melody("soft", s.Volume / 100.0));

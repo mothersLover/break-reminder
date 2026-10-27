@@ -96,7 +96,7 @@ public sealed class EyeRestWindow : Window
             count.Text = ((int)Math.Ceiling(left)).ToString();
             bar.Value = 1 - left / seconds;
         };
-        PointerPressed += (_, _) => Close(); // клик — закрыть раньше
+        PopupDrag.Enable(this, "eyes", onClick: Close);   // щелчок — закрыть раньше, потянуть — подвинуть
         Opened += (_, _) =>
         {
             var screen = Screens.Primary;
@@ -104,7 +104,7 @@ public sealed class EyeRestWindow : Window
             {
                 var wa = screen.WorkingArea;
                 double k = screen.Scaling;
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Bottom - (int)((Bounds.Height + 16) * k));
+                Position = PopupDrag.Place(this, "eyes", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Bottom - (int)((Bounds.Height + 16) * k)));
             }
             Opacity = 1;
             timer.Start();

@@ -38,6 +38,7 @@ public sealed class MeetingWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         Background = Palette.B(Palette.Blue);
         Opacity = 0;
+        PopupDrag.Enable(this, "meeting");
 
         int minutes = Math.Max(1, (int)Math.Round((m.Start - DateTime.Now).TotalMinutes));
         bool hasLink = m.JoinUrl != null;
@@ -110,7 +111,7 @@ public sealed class MeetingWindow : Window
             {
                 var wa = screen.WorkingArea;
                 double k = screen.Scaling;
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Y + (int)(16 * k));
+                Position = PopupDrag.Place(this, "meeting", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Y + (int)(16 * k)));
             }
             Opacity = 1;
             if (s.SoundOn) platform.PlayWav(Synth.Melody("soft", s.Volume / 100.0));

@@ -35,6 +35,7 @@ public sealed class PracticeOfferWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         Background = Palette.B(Palette.Blue);
         Opacity = 0;
+        PopupDrag.Enable(this, "practice");
 
         int minutes = PracticeText.Minutes(kind, s);
         string hint = cardsDue is { } due ? $"{GreetingWindow.Plural(due, "карточка ждёт", "карточки ждут", "карточек ждут")} повторения — быстро, без ожидания ответов."
@@ -91,7 +92,7 @@ public sealed class PracticeOfferWindow : Window
                 var wa = screen.WorkingArea;
                 double k = screen.Scaling;
                 int y = wa.Y + (int)(16 * k) + (MeetingWindow.IsOpen ? (int)(210 * k) : 0);
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y);
+                Position = PopupDrag.Place(this, "practice", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y));
             }
             Opacity = 1;
             if (s.SoundOn) platform.PlayWav(Synth.Melody("soft", s.Volume / 100.0));

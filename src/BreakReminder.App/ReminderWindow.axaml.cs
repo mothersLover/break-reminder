@@ -99,6 +99,7 @@ public partial class ReminderWindow : Window
         {
             // В углу и по центру окно не забирает фокус — чтобы не нажать кнопку случайно, пока печатаешь.
             ShowActivated = false;
+            PopupDrag.Enable(this, "reminder-" + s.Popup);
         }
         Opacity = 0;
 
@@ -129,7 +130,14 @@ public partial class ReminderWindow : Window
             var wa = screen.WorkingArea;
             double k = screen.Scaling;
             int w = (int)(Bounds.Width * k), h = (int)(Bounds.Height * k), m = (int)(16 * k);
-            if (s.Popup == PopupMode.Center)
+            string key = "reminder-" + s.Popup;
+            if (PopupDrag.HasSaved(key))
+            {
+                // отодвигали — появиться там же, лёгким подъёмом
+                animTo = PopupDrag.Place(this, key, default);
+                animFrom = new PixelPoint(animTo.X, animTo.Y + (int)(30 * k));
+            }
+            else if (s.Popup == PopupMode.Center)
             {
                 animTo = new PixelPoint(wa.X + (wa.Width - w) / 2, wa.Y + (wa.Height - h) / 2);
                 animFrom = new PixelPoint(animTo.X, animTo.Y + (int)(30 * k));

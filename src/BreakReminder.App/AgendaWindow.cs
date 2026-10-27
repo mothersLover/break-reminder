@@ -294,6 +294,7 @@ public sealed class TaskAlertWindow : Window
 
     TaskAlertWindow(LocalTask t, AppSettings s, IPlatform platform, TaskStore store)
     {
+        PopupDrag.Enable(this, "task");
         Title = "Задача: " + t.Title;
         Icon = Icons.Clock(Palette.Purple);
         SystemDecorations = SystemDecorations.None;
@@ -355,7 +356,7 @@ public sealed class TaskAlertWindow : Window
                 double k = screen.Scaling;
                 // правый верхний угол; если там уже напоминание о встрече — чуть ниже
                 int y = wa.Y + (int)(16 * k) + (MeetingWindow.IsOpen ? (int)(210 * k) : 0);
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y);
+                Position = PopupDrag.Place(this, "task", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), y));
             }
             Opacity = 1;
             if (s.SoundOn) platform.PlayWav(Synth.Melody("soft", s.Volume / 100.0));

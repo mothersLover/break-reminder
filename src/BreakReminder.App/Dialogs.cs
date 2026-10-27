@@ -29,6 +29,7 @@ sealed class ToastWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         Background = Palette.B(Palette.Card);
         Opacity = 0;
+        PopupDrag.Enable(this, "toast");
         Content = new Border
         {
             BorderBrush = Palette.B(Palette.Gray),
@@ -52,7 +53,7 @@ sealed class ToastWindow : Window
             {
                 var wa = screen.WorkingArea;
                 double k = screen.Scaling;
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Bottom - (int)((Bounds.Height + 16) * k));
+                Position = PopupDrag.Place(this, "toast", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Bottom - (int)((Bounds.Height + 16) * k)));
             }
             Opacity = 1;
             DispatcherTimer.RunOnce(() => { if (current == this) current = null; Close(); }, TimeSpan.FromSeconds(4));

@@ -3,8 +3,74 @@ using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Media.Imaging;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 
 namespace BreakReminder.App;
+
+/// <summary>
+/// Всплывающие окна без рамки можно перетащить мышью — за любое место, кроме кнопок и полей
+/// (они сами обрабатывают нажатие). Тянуть нужно хотя бы на несколько точек: простой щелчок остаётся щелчком.
+/// Куда окно отодвинули, запоминается для этого вида окон (пока программа работает): следующее появится там же.
+/// </summary>
+static class PopupDrag
+{
+    const double Threshold = 5;
+    static readonly Dictionary<string, PixelPoint> Saved = new();
+
+    /// <param name="key">Вид окна: у напоминаний о перерыве и о встрече — свои места.</param>
+    /// <param name="onClick">Что делать при простом щелчке (без перетаскивания), если нужно.</param>
+    public static void Enable(Window w, string key, Action? onClick = null)
+    {
+        PointerPressedEventArgs? press = null;
+        Point start = default;
+        bool moved = false;
+
+        w.Cursor = new Cursor(StandardCursorType.SizeAll);
+        w.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+        {
+            if (e.Handled || !e.GetCurrentPoint(w).Properties.IsLeftButtonPressed) return;
+            press = e;
+            start = e.GetPosition(w);
+            moved = false;
+        }, RoutingStrategies.Bubble);
+        w.AddHandler(InputElement.PointerMovedEvent, (_, e) =>
+        {
+            if (press == null || !e.GetCurrentPoint(w).Properties.IsLeftButtonPressed) return;
+            var p = e.GetPosition(w);
+            if (Math.Abs(p.X - start.X) < Threshold && Math.Abs(p.Y - start.Y) < Threshold) return;
+            var args = press;
+            press = null;
+            moved = true;
+            w.BeginMoveDrag(args);           // на Windows возвращается, когда кнопку отпустили
+            Saved[key] = w.Position;
+        }, RoutingStrategies.Bubble);
+        w.AddHandler(InputElement.PointerReleasedEvent, (_, e) =>
+        {
+            bool click = press != null && !moved;
+            press = null;
+            if (click && !e.Handled) onClick?.Invoke();
+        }, RoutingStrategies.Bubble);
+        // на других системах перетаскивание может закончиться позже — запоминаем любое перемещение после него
+        w.PositionChanged += (_, _) => { if (moved) Saved[key] = w.Position; };
+    }
+
+    /// <summary>Где показать окно: там, куда его отодвигали в прошлый раз (если это место на экране), иначе fallback.</summary>
+    public static PixelPoint Place(Window w, string key, PixelPoint fallback)
+    {
+        if (!Saved.TryGetValue(key, out var p)) return fallback;
+        var screen = w.Screens.ScreenFromPoint(p) ?? w.Screens.Primary;
+        if (screen == null) return fallback;
+        var wa = screen.WorkingArea;
+        double k = screen.Scaling;
+        int width = (int)(w.Bounds.Width * k), height = (int)(w.Bounds.Height * k);
+        return new PixelPoint(
+            Math.Clamp(p.X, wa.X, Math.Max(wa.X, wa.Right - width)),
+            Math.Clamp(p.Y, wa.Y, Math.Max(wa.Y, wa.Bottom - height)));
+    }
+
+    public static bool HasSaved(string key) => Saved.ContainsKey(key);
+}
 
 static class Palette
 {

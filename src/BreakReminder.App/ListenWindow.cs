@@ -54,6 +54,7 @@ public sealed class ListenWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         Background = Palette.B(Palette.Blue);
         Opacity = 0;
+        PopupDrag.Enable(this, "listen");
 
         next.Click += (_, _) => skip?.Cancel();
         close.Click += (_, _) => Close();
@@ -96,7 +97,7 @@ public sealed class ListenWindow : Window
             {
                 var wa = screen.WorkingArea;
                 double k = screen.Scaling;
-                Position = new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Bottom - (int)((Bounds.Height + 16) * k));
+                Position = PopupDrag.Place(this, "listen", new PixelPoint(wa.Right - (int)((Bounds.Width + 16) * k), wa.Bottom - (int)((Bounds.Height + 16) * k)));
             }
             Opacity = 1;
             _ = Run();
