@@ -16,11 +16,10 @@ public sealed class UpdateWindow : Window
 
     readonly ReleaseInfo release;
     readonly IPlatform platform;
-    readonly Button updateButton, laterButton, skipButton;
+    readonly Button updateButton, laterButton, skipButton, pageButton;
     readonly ProgressBar progress;
     readonly TextBlock status;
     CancellationTokenSource? cts;
-    bool failed;
 
     public UpdateWindow(ReleaseInfo release, Version current, bool dayRunning, IPlatform platform)
     {
@@ -37,7 +36,15 @@ public sealed class UpdateWindow : Window
         bool self = Updater.CanSelfUpdate;
         updateButton = new Button { Content = self ? "Обновить" : "Скачать", Classes = { "flat" }, Background = Palette.B(Palette.Green), Width = 140, Height = 38 };
         laterButton = new Button { Content = "Позже", Classes = { "flat" }, Background = Palette.B(Palette.Gray), Width = 110, Height = 38 };
-        skipButton = new Button { Content = "Пропустить эту версию", Background = Brushes.Transparent, Foreground = Palette.B(Palette.Muted), Padding = new Thickness(0), VerticalAlignment = VerticalAlignment.Center };
+        skipButton = new Button
+        {
+            // перенос, а не обрезка, если рядом широкие кнопки
+            Content = new TextBlock { Text = "Пропустить эту версию", TextWrapping = TextWrapping.Wrap },
+            Background = Brushes.Transparent, Foreground = Palette.B(Palette.Muted), Padding = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        pageButton = new Button { Content = "Открыть страницу релиза — скачать вручную", Classes = { "link" }, IsVisible = false, Margin = new Thickness(0, 2, 0, 0) };
+        pageButton.Click += (_, _) => { platform.OpenPath(release.PageUrl); Close(); };
         progress = new ProgressBar { Minimum = 0, Maximum = 1, Height = 6, IsVisible = false, Foreground = Palette.B(Palette.Green) };
         status = new TextBlock { FontSize = 12.5, Foreground = Palette.B(Palette.Muted), TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
@@ -77,6 +84,7 @@ public sealed class UpdateWindow : Window
                 new TextBlock { Text = hint, FontSize = 12.5, Foreground = Palette.B(Palette.Muted), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 6, 0, 0) },
                 progress,
                 status,
+                pageButton,
                 new Grid
                 {
                     ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
@@ -96,7 +104,7 @@ public sealed class UpdateWindow : Window
 
     async Task OnUpdate()
     {
-        if (!Updater.CanSelfUpdate || failed)
+        if (!Updater.CanSelfUpdate)
         {
             platform.OpenPath(release.PageUrl);
             Close();
@@ -104,17 +112,24 @@ public sealed class UpdateWindow : Window
         }
 
         updateButton.IsEnabled = skipButton.IsEnabled = false;
+        pageButton.IsVisible = false;
         progress.IsVisible = status.IsVisible = true;
         status.Foreground = Palette.B(Palette.Muted);
         status.Text = "Скачиваю…";
         cts = new CancellationTokenSource();
         try
         {
+            var retry = new Progress<(int Attempt, int Total)>(r =>
+            {
+                status.Foreground = Palette.B(Palette.Amber);
+                status.Text = $"GitHub не ответил, пробую ещё раз (попытка {r.Attempt} из {r.Total})…";
+            });
             var staged = await Updater.DownloadAsync(release, new Progress<double>(p =>
             {
                 progress.Value = p;
+                status.Foreground = Palette.B(Palette.Muted);
                 status.Text = $"Скачиваю… {p:P0}";
-            }), cts.Token);
+            }), cts.Token, (a, t) => ((IProgress<(int, int)>)retry).Report((a, t)));
             status.Text = "Устанавливаю и перезапускаю…";
             Ready?.Invoke(staged);
         }
@@ -124,10 +139,8 @@ public sealed class UpdateWindow : Window
             progress.IsVisible = false;
             status.Foreground = Palette.B(Palette.Red);
             status.Text = e.Message;
-            failed = true; // следующее нажатие откроет страницу релиза
-            updateButton.Content = "Открыть страницу релиза";
-            updateButton.Width = double.NaN;
-            updateButton.Padding = new Thickness(16, 0);
+            updateButton.Content = "Повторить";      // сбой мог быть временным — можно попробовать ещё раз
+            pageButton.IsVisible = true;             // или скачать вручную со страницы релиза
             updateButton.IsEnabled = skipButton.IsEnabled = true;
         }
     }

@@ -20,8 +20,12 @@ static class Updater
     static string ExePath => Environment.ProcessPath ?? throw new InvalidOperationException("Не удалось определить путь к программе.");
     static string ExeName => OperatingSystem.IsWindows() ? "BreakReminder.exe" : "BreakReminder";
 
-    /// <summary>Скачать и подготовить новую версию рядом с текущей. Возвращает путь к подготовленному файлу.</summary>
-    public static async Task<string> DownloadAsync(ReleaseInfo release, IProgress<double> progress, CancellationToken ct)
+    /// <summary>
+    /// Скачать и подготовить новую версию рядом с текущей. Возвращает путь к подготовленному файлу.
+    /// На временных сбоях GitHub (504 и т. п.) сам повторяет и докачивает; retrying — «попытка 2 из 4».
+    /// </summary>
+    public static async Task<string> DownloadAsync(ReleaseInfo release, IProgress<double> progress, CancellationToken ct,
+        Action<int, int>? retrying = null)
     {
         string assetName = UpdateChecker.AssetNameFor(UpdateChecker.CurrentRid);
         var asset = release.Asset(assetName) ?? throw new InvalidOperationException($"В релизе нет сборки для этой системы ({assetName}).");
@@ -35,29 +39,16 @@ static class Updater
         Directory.CreateDirectory(work);
         string archive = Path.Combine(work, asset.Name);
 
-        // 1. скачать
-        using (var resp = await Http.GetAsync(asset.Url, HttpCompletionOption.ResponseHeadersRead, ct))
-        {
-            if (!resp.IsSuccessStatusCode) throw new InvalidOperationException($"Не удалось скачать обновление (ошибка {(int)resp.StatusCode}).");
-            long total = resp.Content.Headers.ContentLength ?? asset.Size;
-            await using var src = await resp.Content.ReadAsStreamAsync(ct);
-            await using var dst = File.Create(archive);
-            var buf = new byte[81920];
-            long done = 0;
-            int n;
-            while ((n = await src.ReadAsync(buf, ct)) > 0)
-            {
-                await dst.WriteAsync(buf.AsMemory(0, n), ct);
-                done += n;
-                if (total > 0) progress.Report((double)done / total);
-            }
-        }
+        // 1. скачать (с повторами и докачкой)
+        await Downloads.ToFileAsync(Http, asset.Url, archive, asset.Size, progress, retrying, ct);
 
         // 2. сверить контрольную сумму (если релиз её публикует — новые релизы публикуют всегда)
         var sumsAsset = release.Asset(UpdateChecker.ChecksumsFile);
         if (sumsAsset != null)
         {
-            string sums = await Http.GetStringAsync(sumsAsset.Url, ct);
+            string sumsFile = Path.Combine(work, sumsAsset.Name);
+            await Downloads.ToFileAsync(Http, sumsAsset.Url, sumsFile, sumsAsset.Size, null, retrying, ct);
+            string sums = await File.ReadAllTextAsync(sumsFile, ct);
             string expected = UpdateChecker.ExpectedSha256(sums, asset.Name)
                               ?? throw new InvalidOperationException("В списке контрольных сумм нет этого файла — обновление не установлено.");
             string actual;
