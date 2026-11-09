@@ -127,6 +127,35 @@ public class FlashcardTests : IDisposable
     }
 
     [Fact]
+    public void Suspended_card_is_not_shown_anywhere_but_kept()
+    {
+        var s = new CardStore(file);
+        s.Add(new[] { ("Corrige : « apres »", "après", ""), ("я пошёл", "je suis allé", "") }, Now);
+        var bad = s.All[0];
+        int changes = 0;
+        s.Changed += () => changes++;
+        s.SetSuspended(bad.Id, true);
+        s.SetSuspended(bad.Id, true);                                 // повторно — ничего не меняет
+        Assert.Equal(1, changes);
+
+        var again = new CardStore(file);
+        Assert.Equal(2, again.All.Count);                             // в файле осталась
+        Assert.True(again.All[0].Suspended);
+        Assert.DoesNotContain(again.Queue(Now), c => c.Suspended);
+        Assert.Equal(1, again.DueCount(Now));
+        Assert.All(again.ForListening(Now, 10), c => Assert.False(c.Suspended));
+        for (int d = 0; d < 30; d++) Assert.False(again.WordOfDay(Now.AddDays(d))!.Suspended);
+        Assert.Equal(1, LearningStats.Build(new PracticeLog(file + ".csv"), again, Now).CardsTotal);
+
+        // помощник предлагает такую же — не добавляется: убрана, значит не нужна
+        Assert.Equal(0, again.Add(new[] { ("Corrige : « apres »", "après", "") }, Now));
+        Assert.Contains("Corrige : « apres »", again.RecentFronts(10));
+
+        again.SetSuspended(bad.Id, false);
+        Assert.Equal(2, new CardStore(file).DueCount(Now));            // вернули — снова в повторении
+    }
+
+    [Fact]
     public void Word_of_day_prefers_forgotten_cards()
     {
         var s = new CardStore(file);

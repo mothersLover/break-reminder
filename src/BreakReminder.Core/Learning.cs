@@ -101,8 +101,8 @@ public sealed record LearningStats(
         return new LearningStats(
             byDay, Sum(weekFrom, today), Sum(today.AddDays(-13), today.AddDays(-7)),
             log.Streak(today), log.BestStreak(),
-            cards.All.Count, cards.All.Count(c => c.IntervalDays >= LearnedIntervalDays), cards.All.Count(c => c.IsNew), cards.DueCount(now),
-            cards.All.Where(c => c.Lapses > 0).OrderByDescending(c => c.Lapses).ThenByDescending(c => c.LastReview).Take(5).ToList(),
+            cards.Active.Count(), cards.Active.Count(c => c.IntervalDays >= LearnedIntervalDays), cards.Active.Count(c => c.IsNew), cards.DueCount(now),
+            cards.Active.Where(c => c.Lapses > 0).OrderByDescending(c => c.Lapses).ThenByDescending(c => c.LastReview).Take(5).ToList(),
             sessions);
     }
 

@@ -5,7 +5,8 @@ namespace BreakReminder.Core.Tests;
 public class HabitTests : IDisposable
 {
     readonly string file = Path.Combine(Path.GetTempPath(), "br-habits-" + Guid.NewGuid().ToString("N") + ".json");
-    static readonly DateTime Day = new(2026, 10, 26, 10, 0, 0);
+    // от настоящего «сегодня»: хранилище чистит «не сегодня» старше недели, считая от текущей даты
+    static readonly DateTime Day = DateTime.Today.AddHours(10);
 
     public void Dispose()
     {

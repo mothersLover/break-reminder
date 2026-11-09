@@ -36,6 +36,17 @@ public sealed class CardsWindow : Window
     readonly TextBlock front = new() { FontSize = 24, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap, Foreground = Palette.B(Palette.Text) };
     readonly TextBox answer = new() { Watermark = "Твой ответ (можно не писать — просто вспомни)", FontSize = 16 };
     readonly Button showButton = new() { Content = "Показать ответ", Classes = { "accent" }, HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(18, 8) };
+
+    // «больше не показывать»: последняя убранная карточка — для «Вернуть»
+    Flashcard? lastSuspended;
+    readonly TextBlock undoText = Card.Text("", 13.5, Palette.Text);
+    readonly Border undoBar;
+
+    static Button HideButton() => new()
+    {
+        Content = "🚫 Больше не показывать", Background = Brushes.Transparent, Foreground = Palette.B(Palette.Muted),
+        Padding = new Thickness(10, 6), VerticalAlignment = VerticalAlignment.Center
+    };
     readonly SelectableTextBlock back = new() { FontSize = 22, TextWrapping = TextWrapping.Wrap, Foreground = Palette.B(Palette.Green) };
     readonly TextBlock match = Card.Text("", 13.5, Palette.Muted);
     readonly TextBlock note = Card.Text("", 13.5, Palette.Muted);
@@ -111,6 +122,18 @@ public sealed class CardsWindow : Window
             IsVisible = minutes != null, Child = timerText
         };
 
+        var undo = new Button { Content = "Вернуть", Classes = { "link" }, VerticalAlignment = VerticalAlignment.Center };
+        undo.Click += (_, _) => Unsuspend();
+        var undoGrid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        undoText.VerticalAlignment = VerticalAlignment.Center;
+        undoGrid.Children.Add(undoText);
+        undoGrid.Children.Add(undo.WithColumn(1));
+        undoBar = new Border
+        {
+            Background = Palette.B(Palette.Card), BorderBrush = Palette.B(Palette.Gray), BorderThickness = new Thickness(4, 0, 0, 0),
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(14, 8), IsVisible = false, Child = undoGrid
+        };
+
         reviewPane = BuildReview();
         listPane = BuildList();
 
@@ -134,6 +157,7 @@ public sealed class CardsWindow : Window
             if (!shown && e.Key == Key.Enter) { e.Handled = true; RevealAnswer(); return; }
             if (!shown && e.Key == Key.Space && !answer.IsFocused) { e.Handled = true; RevealAnswer(); return; }
             if (shown && e.Key is >= Key.D1 and <= Key.D4) { e.Handled = true; Rate((Grade)(e.Key - Key.D1)); }
+            if (e.Key == Key.Delete && (shown || !answer.IsFocused)) { e.Handled = true; Suspend(); }
             if (shown && e.Key is >= Key.NumPad1 and <= Key.NumPad4) { e.Handled = true; Rate((Grade)(e.Key - Key.NumPad1)); }
         }, RoutingStrategies.Tunnel);
 
@@ -175,7 +199,9 @@ public sealed class CardsWindow : Window
     void UpdateSubtitle()
     {
         int due = store.DueCount(DateTime.Now);
-        subtitle.Text = $"К повторению: {due} · всего {store.All.Count}" + (reviewed > 0 ? $" · сейчас повторено {reviewed}" : "");
+        int hidden = store.All.Count(c => c.Suspended);
+        subtitle.Text = $"К повторению: {due} · всего {store.All.Count - hidden}" + (hidden > 0 ? $" · убрано {hidden}" : "")
+                        + (reviewed > 0 ? $" · сейчас повторено {reviewed}" : "");
     }
 
     void UpdateTimer()
@@ -218,12 +244,26 @@ public sealed class CardsWindow : Window
         answerPart.Children.Add(match);
         answerPart.Children.Add(note);
         answerPart.Children.Add(grades);
-        answerPart.Children.Add(Card.Text("Клавиши 1–4 — оценка.", 12, Palette.Muted));
+        var hideAfter = HideButton();
+        hideAfter.Click += (_, _) => Suspend();
+        ToolTip.SetTip(hideAfter, "Убрать карточку из повторения (Delete). Вернуть можно в «Все карточки»");
+        var keysRow = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        var keys = Card.Text("Клавиши 1–4 — оценка, Delete — больше не показывать.", 12, Palette.Muted);
+        keys.VerticalAlignment = VerticalAlignment.Center;
+        keysRow.Children.Add(keys);
+        keysRow.Children.Add(hideAfter.WithColumn(1));
+        answerPart.Children.Add(keysRow);
+
+        var hideBefore = HideButton();
+        hideBefore.Click += (_, _) => Suspend();
+        ToolTip.SetTip(hideBefore, "Убрать карточку из повторения — например, если она неудачная. Вернуть можно в «Все карточки»");
+        var questionButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { showButton, hideBefore } };
+        showButton.PropertyChanged += (_, e) => { if (e.Property == IsVisibleProperty) questionButtons.IsVisible = showButton.IsVisible; };
 
         var cardBox = new Border
         {
             Background = Palette.B(Palette.Card), CornerRadius = new CornerRadius(8), Padding = new Thickness(22, 18),
-            Child = new StackPanel { Spacing = 12, Children = { front, answer, showButton, answerPart } }
+            Child = new StackPanel { Spacing = 12, Children = { front, answer, questionButtons, answerPart } }
         };
         cardPart.Children.Add(cardBox);
 
@@ -231,8 +271,35 @@ public sealed class CardsWindow : Window
         close.Click += (_, _) => Close();
         donePart.Children.Add(close);
 
-        return new ScrollViewer { Content = new StackPanel { Spacing = 12, Children = { cardPart, donePart } } };
+        return new ScrollViewer { Content = new StackPanel { Spacing = 12, Children = { undoBar, cardPart, donePart } } };
     }
+
+    /// <summary>«Больше не показывать»: убрать текущую карточку и перейти к следующей.</summary>
+    void Suspend()
+    {
+        if (current is not { } c) return;
+        lastSuspended = c;
+        queue.RemoveAll(x => x == c);          // если её «не помнил» в этом заходе — тоже не показывать
+        store.SetSuspended(c.Id, true);
+        undoText.Text = $"«{Short(c.Front)}» убрана — больше не покажу.";
+        undoBar.IsVisible = true;
+        NextCard();
+    }
+
+    /// <summary>«Вернуть» только что убранную — и показать её снова.</summary>
+    void Unsuspend()
+    {
+        if (lastSuspended is not { } c) return;
+        lastSuspended = null;
+        undoBar.IsVisible = false;
+        if (current != null) queue.Insert(0, current);
+        queue.Insert(0, c);
+        current = null;
+        store.SetSuspended(c.Id, false);       // окно подхватит изменение и покажет первую из очереди
+        if (current == null) NextCard();
+    }
+
+    static string Short(string s) => s.Length > 50 ? s[..50] + "…" : s;
 
     void NextCard()
     {
@@ -259,7 +326,7 @@ public sealed class CardsWindow : Window
     {
         while (donePart.Children.Count > 1) donePart.Children.RemoveAt(0);
         var now = DateTime.Now;
-        var next = store.All.Where(c => c.Due > now).OrderBy(c => c.Due).FirstOrDefault();
+        var next = store.Active.Where(c => c.Due > now).OrderBy(c => c.Due).FirstOrDefault();
         string title = reviewed > 0 ? "Готово!" : store.All.Count == 0 ? "Карточек пока нет" : "На сейчас повторять нечего";
         string text = reviewed > 0
             ? $"Повторено: {GreetingWindow.Plural(reviewed, "карточка", "карточки", "карточек")}."
@@ -319,6 +386,8 @@ public sealed class CardsWindow : Window
         if (current == null || !shown) return;
         store.Review(current, g, DateTime.Now);
         reviewed++;
+        undoBar.IsVisible = false;
+        lastSuspended = null;
         if (g == Grade.Again) queue.Add(current);   // забытое — ещё раз в конце этого же захода
         NextCard();
     }
@@ -384,7 +453,7 @@ public sealed class CardsWindow : Window
         string q = (search.Text ?? "").Trim();
         var items = store.All
             .Where(c => q.Length == 0 || c.Front.Contains(q, StringComparison.OrdinalIgnoreCase) || c.Back.Contains(q, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(c => c.Due).ToList();
+            .OrderBy(c => c.Suspended).ThenBy(c => c.Due).ToList();
         if (items.Count == 0)
         {
             rows.Children.Add(Card.Text(store.All.Count == 0 ? "Карточек пока нет." : "Ничего не нашлось.", 14, Palette.Muted));
@@ -392,7 +461,7 @@ public sealed class CardsWindow : Window
         }
         foreach (var c in items)
         {
-            string due = c.IsNew ? "новая" : c.Due <= now ? "пора повторить" : c.Due.Date == now.Date ? "сегодня в " + c.Due.ToString("HH:mm")
+            string due = c.Suspended ? "убрана — не показывается" : c.IsNew ? "новая" : c.Due <= now ? "пора повторить" : c.Due.Date == now.Date ? "сегодня в " + c.Due.ToString("HH:mm")
                 : "через " + Scheduler.Label((c.Due.Date - now.Date).TotalDays);
             var text = new StackPanel
             {
@@ -412,14 +481,20 @@ public sealed class CardsWindow : Window
             ToolTip.SetTip(del, "Удалить карточку");
             string id = c.Id;
             del.Click += (_, _) => { store.Remove(id); RebuildList(); };
-            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            bool suspended = c.Suspended;
+            var toggle = new Button { Content = suspended ? "Вернуть" : "Убрать", FontSize = 12.5, Padding = new Thickness(8, 2), VerticalAlignment = VerticalAlignment.Top };
+            ToolTip.SetTip(toggle, suspended ? "Снова показывать в повторении" : "Больше не показывать в повторении (карточка останется в списке)");
+            toggle.Click += (_, _) => { store.SetSuspended(id, !suspended); RebuildList(); };
+            var row = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
             row.Children.Add(text);
-            Grid.SetColumn(del, 1);
+            row.Children.Add(toggle.WithColumn(1));
+            Grid.SetColumn(del, 2);
             row.Children.Add(del);
             rows.Children.Add(new Border
             {
-                Background = Palette.B(Palette.Card), BorderBrush = Palette.B(c.Due <= now ? Palette.Blue : Palette.Gray),
-                BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(4), Padding = new Thickness(12, 8), Child = row
+                Background = Palette.B(Palette.Card), BorderBrush = Palette.B(!c.Suspended && c.Due <= now ? Palette.Blue : Palette.Gray),
+                BorderThickness = new Thickness(4, 0, 0, 0), CornerRadius = new CornerRadius(4), Padding = new Thickness(12, 8), Child = row,
+                Opacity = c.Suspended ? 0.55 : 1
             });
         }
     }

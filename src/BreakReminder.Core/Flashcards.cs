@@ -20,6 +20,8 @@ public sealed class Flashcard
     public int Lapses { get; set; }               // сколько раз забывал
     public DateTime? LastReview { get; set; }
     public DateTime? FirstReview { get; set; }    // когда карточку впервые показали (для лимита новых в день)
+    /// <summary>«Больше не показывать»: нет в повторении, прослушивании и слове дня; вернуть можно в списке.</summary>
+    public bool Suspended { get; set; }
 
     public bool IsNew => LastReview == null;
 }
@@ -112,6 +114,9 @@ public sealed class CardStore
 
     public IReadOnlyList<Flashcard> All => cards;
 
+    /// <summary>Карточки, которые повторяются (без убранных «больше не показывать»).</summary>
+    public IEnumerable<Flashcard> Active => cards.Where(c => !c.Suspended);
+
     /// <summary>Карточки изменились — для обновления окон и счётчиков.</summary>
     public event Action? Changed;
 
@@ -136,6 +141,18 @@ public sealed class CardStore
         if (cards.RemoveAll(c => c.Id == id) > 0) Save();
     }
 
+    /// <summary>
+    /// Убрать карточку («больше не показывать») или вернуть. Убранная остаётся в файле: помощник видит её
+    /// среди существующих и не предложит такую же заново.
+    /// </summary>
+    public void SetSuspended(string id, bool suspended)
+    {
+        var c = cards.FirstOrDefault(x => x.Id == id);
+        if (c == null || c.Suspended == suspended) return;
+        c.Suspended = suspended;
+        Save();
+    }
+
     /// <summary>Ответ на карточку.</summary>
     public void Review(Flashcard c, Grade g, DateTime now)
     {
@@ -147,8 +164,8 @@ public sealed class CardStore
     public List<Flashcard> Queue(DateTime now)
     {
         int newToday = cards.Count(c => c.FirstReview?.Date == now.Date);
-        var review = cards.Where(c => !c.IsNew && c.Due <= now).OrderBy(c => c.Due);
-        var fresh = cards.Where(c => c.IsNew && c.Due <= now).OrderBy(c => c.Created).Take(Math.Max(0, NewPerDay - newToday));
+        var review = Active.Where(c => !c.IsNew && c.Due <= now).OrderBy(c => c.Due);
+        var fresh = Active.Where(c => c.IsNew && c.Due <= now).OrderBy(c => c.Created).Take(Math.Max(0, NewPerDay - newToday));
         return review.Concat(fresh).ToList();
     }
 
@@ -157,9 +174,10 @@ public sealed class CardStore
     /// <summary>Слово дня: недавно выученная или забываемая карточка — чтобы освежить.</summary>
     public Flashcard? WordOfDay(DateTime today)
     {
-        if (cards.Count == 0) return null;
-        var pool = cards.Where(c => !c.IsNew).OrderByDescending(c => c.Lapses).ThenByDescending(c => c.LastReview).Take(10).ToList();
-        if (pool.Count == 0) pool = cards.OrderByDescending(c => c.Created).Take(10).ToList();
+        var active = Active.ToList();
+        if (active.Count == 0) return null;
+        var pool = active.Where(c => !c.IsNew).OrderByDescending(c => c.Lapses).ThenByDescending(c => c.LastReview).Take(10).ToList();
+        if (pool.Count == 0) pool = active.OrderByDescending(c => c.Created).Take(10).ToList();
         return pool[(today.DayOfYear + today.Year) % pool.Count];
     }
 
@@ -169,7 +187,7 @@ public sealed class CardStore
     /// </summary>
     public List<Flashcard> ForListening(DateTime now, int count)
     {
-        var speakable = cards.Where(c => !SpeechText.HasCyrillic(c.Back)).ToList();
+        var speakable = Active.Where(c => !SpeechText.HasCyrillic(c.Back)).ToList();
         var due = speakable.Where(c => !c.IsNew && c.Due <= now).OrderBy(c => c.Due);
         var recent = speakable.Where(c => !c.IsNew && c.Due > now).OrderByDescending(c => c.Lapses).ThenByDescending(c => c.LastReview);
         var fresh = speakable.Where(c => c.IsNew).OrderByDescending(c => c.Created);
